@@ -1,65 +1,175 @@
-import Image from "next/image";
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
+import { uploadReceiptImage } from '@/lib/supabase/upload'
+
+type Status = 'idle' | 'uploading' | 'extracting'
 
 export default function Home() {
+  const router = useRouter()
+  const supabase = createClient()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [userId, setUserId] = useState<string | null>(null)
+  const [file, setFile] = useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [status, setStatus] = useState<Status>('idle')
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null))
+  }, [supabase])
+
+  // Libera a URL do preview anterior sempre que trocar de arquivo/desmontar
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+    }
+  }, [previewUrl])
+
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const selected = event.target.files?.[0]
+    if (!selected) return
+
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    setFile(selected)
+    setPreviewUrl(URL.createObjectURL(selected))
+    setErrorMsg(null)
+  }
+
+  function handleEscolherOutra() {
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    setFile(null)
+    setPreviewUrl(null)
+    setErrorMsg(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  async function handleEnviar() {
+    if (!file || !userId) return
+
+    setErrorMsg(null)
+
+    try {
+      setStatus('uploading')
+      const imagePath = await uploadReceiptImage(file, userId)
+
+      setStatus('extracting')
+      const response = await fetch('/api/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imagePath }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Não foi possível processar a nota fiscal.')
+      }
+
+      const { id } = await response.json()
+      router.push(`/despesas/revisar/${id}`)
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : 'Erro ao enviar a despesa.')
+      setStatus('idle')
+    }
+  }
+
+  async function handleSignOut() {
+    await supabase.auth.signOut()
+    router.push('/login')
+    router.refresh()
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="flex min-h-screen flex-col bg-[#080810] text-white">
+      <header className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+        <span className="text-xl font-semibold">
+          Flux<span className="text-[#6333ff]">.</span>
+        </span>
+        <div className="flex items-center gap-4">
+          <Link
+            href="/despesas"
+            className="text-sm text-white/60 transition-colors hover:text-white"
+          >
+            Ver histórico
+          </Link>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="text-sm text-white/60 transition-colors hover:text-white"
+          >
+            Sair
+          </button>
+        </div>
+      </header>
+
+      <main className="flex flex-1 flex-col items-center justify-center px-6 py-10">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleFileChange}
+          className="hidden"
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+        {!previewUrl ? (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex w-full max-w-xs flex-col items-center justify-center gap-4 rounded-3xl bg-[#6333ff] px-8 py-14 text-white shadow-xl shadow-[#6333ff]/30 transition-transform active:scale-95"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              className="h-14 w-14"
+              aria-hidden="true"
+            >
+              <path
+                d="M4 8a2 2 0 0 1 2-2h1.5l.9-1.5A1.5 1.5 0 0 1 9.7 3.7h4.6a1.5 1.5 0 0 1 1.3.8L16.5 6H18a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinejoin="round"
+              />
+              <circle cx="12" cy="13" r="3.5" stroke="currentColor" strokeWidth="1.6" />
+            </svg>
+            <span className="text-lg font-semibold">Adicionar despesa</span>
+          </button>
+        ) : (
+          <div className="flex w-full max-w-xs flex-col items-center gap-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={previewUrl}
+              alt="Pré-visualização da nota fiscal"
+              className="w-full rounded-2xl border border-white/10 object-cover"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+
+            {errorMsg && <p className="text-sm text-red-400">{errorMsg}</p>}
+
+            <button
+              type="button"
+              onClick={handleEnviar}
+              disabled={status !== 'idle'}
+              className="w-full rounded-xl bg-[#00c8c8] py-4 text-lg font-semibold text-[#080810] transition-opacity disabled:opacity-50"
+            >
+              {status === 'uploading' && 'Enviando...'}
+              {status === 'extracting' && 'Processando...'}
+              {status === 'idle' && 'Enviar'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleEscolherOutra}
+              disabled={status !== 'idle'}
+              className="text-sm text-white/60 underline-offset-4 hover:underline disabled:opacity-50"
+            >
+              Escolher outra foto
+            </button>
+          </div>
+        )}
       </main>
     </div>
-  );
+  )
 }
