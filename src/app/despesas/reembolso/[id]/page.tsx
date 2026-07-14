@@ -94,7 +94,6 @@ export default async function DetalheReembolsoPage({
               Baixar PDF
             </a>
           ) : (
-            // A rota /api/reembolso/[id]/pdf ainda não existe — dá 404 até ser criada
             <form action={`/api/reembolso/${lote.id}/pdf`} method="POST">
               <button
                 type="submit"

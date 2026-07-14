@@ -71,10 +71,8 @@ export default async function DespesasPage() {
   return (
     <div className="min-h-screen bg-[#080810] px-4 py-6 text-white">
       <div className="mx-auto flex w-full max-w-md flex-col gap-6">
-        <header className="flex items-center justify-between">
-          <Link href="/" className="text-sm text-white/60 hover:text-white">
-            ← Início
-          </Link>
+        {/* Link "← Início" removido: já coberto pelo item "Início" do menu inferior */}
+        <header className="flex items-center justify-end">
           <Link
             href="/"
             className="rounded-lg bg-[#6333ff] px-4 py-2 text-sm font-semibold text-white"

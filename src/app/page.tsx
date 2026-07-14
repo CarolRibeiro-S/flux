@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { uploadReceiptImage } from '@/lib/supabase/upload'
 
@@ -88,21 +87,14 @@ export default function Home() {
         <span className="text-xl font-semibold">
           Flux<span className="text-[#6333ff]">.</span>
         </span>
-        <div className="flex items-center gap-4">
-          <Link
-            href="/despesas"
-            className="text-sm text-white/60 transition-colors hover:text-white"
-          >
-            Ver histórico
-          </Link>
-          <button
-            type="button"
-            onClick={handleSignOut}
-            className="text-sm text-white/60 transition-colors hover:text-white"
-          >
-            Sair
-          </button>
-        </div>
+        {/* "Ver histórico" foi removido: já coberto pelo item "Histórico" do menu inferior */}
+        <button
+          type="button"
+          onClick={handleSignOut}
+          className="text-sm text-white/60 transition-colors hover:text-white"
+        >
+          Sair
+        </button>
       </header>
 
       <main className="flex flex-1 flex-col items-center justify-center px-6 py-10">

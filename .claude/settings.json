@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:mrkivan820.medium.com)",
+      "Read(//c/Program Files/Android/Android Studio/**)",
+      "Bash(JAVA_HOME=\"C:\\\\Program Files\\\\Eclipse Adoptium\\\\jdk-17.0.18.8-hotspot\" ./gradlew build --console=plain)",
+      "Bash(\"/c/Program Files/Android/Android Studio/jbr/bin/java\" -version)",
+      "Bash(ls -la \"/c/Program Files/Android/Android Studio/jbr/bin/\" 2>&1 | head -30)",
+      "Read(//c/Program Files/Android/Android Studio/jbr/bin//**)",
+      "Bash(find \"/c/Program Files/Android/Android Studio\" -iname \"java.exe\" 2>/dev/null)",
+      "Read(//c/Program Files/Android/Android Studio/jbr/**)",
+      "PowerShell(winget search \"Eclipse Temurin 21\" --accept-source-agreements 2>&1)",
+      "PowerShell(winget search \"Temurin\" --accept-source-agreements 2>&1)",
+      "PowerShell(winget install --id EclipseAdoptium.Temurin.21.JDK --accept-package-agreements --accept-source-agreements -e 2>&1)",
+      "Read(//c/Program Files/Eclipse Adoptium/**)",
+      "Bash(\"/c/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot/bin/java\" -version)",
+      "Bash(./gradlew build *)",
+      "Bash(./gradlew app:lintDebug --rerun-tasks --console=plain)",
+      "Bash(npm install *)",
+      "Bash(npx eslint *)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(disown)",
+      "Read(//tmp/**)",
+      "Bash(curl -s http://localhost:3000/)",
+      "Bash(curl -s http://localhost:3000/login)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{redirect_url}\\\\n\" http://localhost:3000/despesas)",
+      "Bash(tail -60 /tmp/flux-dev.log)",
+      "Bash(curl -s http://localhost:3000/ -o /tmp/home.html -w \"HTTP %{http_code}\\\\n\")",
+      "Bash(curl -s http://localhost:3000/login -o /tmp/login.html -w \"HTTP %{http_code}\\\\n\")",
+      "Bash(taskkill //F //IM node.exe //FI \"WINDOWTITLE eq *\")",
+      "Bash(netstat -ano)",
+      "Bash(taskkill //F //PID 11040)"
+    ]
+  }
+}
