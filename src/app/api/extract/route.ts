@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { inferirMimeType } from '@/lib/imagemMime'
+import { obterClienteAtivo } from '@/lib/clienteAtivo'
 
 const anthropic = new Anthropic()
 
@@ -36,11 +37,18 @@ function validarDadosExtraidos(json: unknown): DadosExtraidos {
 }
 
 export async function POST(request: NextRequest) {
+  // Lê apenas imagePath do corpo da requisição: cliente_id NUNCA é aceito
+  // vindo do front-end (evitaria que alguém manipulasse a chamada e gravasse
+  // a despesa em outro cliente). Quem determina o cliente é sempre o servidor.
   const { imagePath } = (await request.json()) as { imagePath?: string }
 
   if (!imagePath) {
     return NextResponse.json({ error: 'imagePath é obrigatório' }, { status: 400 })
   }
+
+  // Resolve o cliente ativo a partir do cookie, validado no banco. Redireciona
+  // para /selecionar-cliente (via obterClienteAtivo) se não houver um válido.
+  const clienteAtivo = await obterClienteAtivo()
 
   const supabase = await createClient()
 
@@ -123,6 +131,7 @@ Responda APENAS com um JSON válido, sem nenhum texto adicional, sem markdown e 
       .from('expenses')
       .insert({
         user_id: user.id,
+        cliente_id: clienteAtivo.id,
         image_path: imagePath,
         status: 'pendente_revisao',
         raw_ocr_text: rawOcrText,

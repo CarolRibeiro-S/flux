@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { obterClienteAtivo } from '@/lib/clienteAtivo'
 import { SeletorDespesas } from './SeletorDespesas'
 
 export default async function NovoReembolsoPage() {
@@ -14,11 +15,15 @@ export default async function NovoReembolsoPage() {
     redirect('/login')
   }
 
-  // Só despesas confirmadas que ainda não entraram em nenhum lote de reembolso
+  const clienteAtivo = await obterClienteAtivo()
+
+  // Só despesas confirmadas do cliente ativo que ainda não entraram em
+  // nenhum lote de reembolso — a lista já chega filtrada para SeletorDespesas
   const { data: despesas } = await supabase
     .from('expenses')
     .select('id, merchant_name, category, amount, expense_date')
     .eq('user_id', user.id)
+    .eq('cliente_id', clienteAtivo.id)
     .eq('status', 'confirmado')
     .is('batch_id', null)
     .order('expense_date', { ascending: false })

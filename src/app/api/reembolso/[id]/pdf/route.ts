@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont } from 'pdf-lib'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { obterClienteAtivo } from '@/lib/clienteAtivo'
 import { obterCategoria } from '@/lib/categorias'
 import { formatarMoeda, formatarDataBR } from '@/lib/formatadores'
 import { inferirMimeType } from '@/lib/imagemMime'
@@ -31,6 +32,7 @@ const COR_BORDA = rgb(0.82, 0.82, 0.86)
 const COR_BORDA_FORTE = rgb(0.62, 0.62, 0.68)
 const COR_FUNDO_SUTIL = rgb(0.96, 0.96, 0.97)
 const COR_DESTAQUE = rgb(0x63 / 255, 0x33 / 255, 0xff / 255)
+const COR_TEAL = rgb(0x00 / 255, 0xc8 / 255, 0xc8 / 255)
 const COR_ALERTA = rgb(0.62, 0.24, 0.24)
 
 // Trunca o texto com "…" se ele não couber na largura disponível da coluna
@@ -70,6 +72,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
+  const clienteAtivo = await obterClienteAtivo()
   const supabase = await createClient()
   const supabaseAdmin = createAdminClient()
 
@@ -82,22 +85,27 @@ export async function POST(
   }
 
   try {
-    // Filtra também por user_id como reforço de segurança além do RLS
+    // Filtro triplo: id + user_id + cliente_id do cliente ativo, como
+    // reforço de segurança além do RLS. Um lote de outro cliente jamais gera PDF aqui.
     const { data: lote, error: erroLote } = await supabase
       .from('reimbursement_batches')
       .select('*')
       .eq('id', id)
       .eq('user_id', user.id)
+      .eq('cliente_id', clienteAtivo.id)
       .single()
 
     if (erroLote || !lote) {
       return NextResponse.json({ error: 'Lote não encontrado' }, { status: 404 })
     }
 
+    // Reforço redundante: mesmo já sabendo que o lote é do cliente ativo,
+    // filtra as despesas também por cliente_id
     const { data: despesas } = await supabase
       .from('expenses')
       .select('*')
       .eq('batch_id', lote.id)
+      .eq('cliente_id', clienteAtivo.id)
       .order('expense_date', { ascending: true })
 
     const listaDespesas = despesas ?? []
@@ -133,6 +141,19 @@ export async function POST(
     // Barrinha de destaque sob o título
     pagina.drawRectangle({ x: MARGEM, y, width: 48, height: 3, color: COR_DESTAQUE })
     y -= 30
+
+    // Nome do cliente em destaque, logo abaixo do título — a capa deixa
+    // claro de imediato de quem são as despesas deste relatório
+    const nomeClienteTexto = clienteAtivo.nome
+    const nomeClienteTruncado = truncarTexto(nomeClienteTexto, LARGURA_CONTEUDO, fonteNegrito, 15)
+    pagina.drawText(nomeClienteTruncado, {
+      x: MARGEM,
+      y,
+      size: 15,
+      font: fonteNegrito,
+      color: COR_TEAL,
+    })
+    y -= 26
 
     const periodoTexto = `Período: ${
       lote.period_start ? formatarDataBR(lote.period_start) : '—'

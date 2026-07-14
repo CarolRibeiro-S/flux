@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { obterClienteAtivo } from '@/lib/clienteAtivo'
 import { obterCategoria } from '@/lib/categorias'
 import { formatarMoeda, formatarDataBR } from '@/lib/formatadores'
 import { obterStatusReembolso } from '@/lib/statusReembolso'
@@ -29,22 +30,29 @@ export default async function DetalheReembolsoPage({
     redirect('/login')
   }
 
-  // Filtra também por user_id como reforço de segurança além do RLS
+  const clienteAtivo = await obterClienteAtivo()
+
+  // Filtro triplo do lote: id + user_id + cliente_id do cliente ativo. Um
+  // lote de outro cliente nunca deve ser encontrado aqui.
   const { data: lote, error } = await supabase
     .from('reimbursement_batches')
     .select('*')
     .eq('id', id)
     .eq('user_id', user.id)
+    .eq('cliente_id', clienteAtivo.id)
     .single()
 
   if (error || !lote) {
     notFound()
   }
 
+  // Reforço redundante: mesmo já sabendo que o lote é do cliente ativo,
+  // filtra as despesas também por cliente_id
   const { data: despesas } = await supabase
     .from('expenses')
     .select('id, merchant_name, category, amount, expense_date')
     .eq('batch_id', lote.id)
+    .eq('cliente_id', clienteAtivo.id)
     .order('expense_date', { ascending: true })
 
   const listaDespesas = (despesas ?? []) as Despesa[]

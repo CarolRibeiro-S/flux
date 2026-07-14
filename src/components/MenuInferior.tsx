@@ -4,8 +4,10 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Home, History, Receipt, Camera, type LucideIcon } from 'lucide-react'
 
-// Rotas onde o menu não deve aparecer (usuário ainda não autenticado)
-const ROTAS_OCULTAS = ['/login', '/auth/callback']
+// Rotas onde o menu não deve aparecer: não autenticado, ou autenticado mas
+// ainda sem um cliente ativo selecionado (etapa obrigatória antes de usar
+// qualquer tela que dependa de um cliente)
+const ROTAS_OCULTAS = ['/login', '/auth/callback', '/selecionar-cliente']
 
 type ItemMenu = {
   rotulo: string

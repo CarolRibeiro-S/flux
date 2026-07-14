@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { lerClienteAtivoIdCookie } from '@/lib/clienteAtivoCookie'
 
 // Sugestões rápidas exibidas no datalist — a categoria continua sendo texto livre
 const SUGESTOES_CATEGORIA = [
@@ -41,6 +42,15 @@ export function FormularioRevisao({ despesa }: { despesa: Despesa }) {
 
   async function handleConfirmar() {
     setErro(null)
+
+    // Isolamento por cliente também nas mutações feitas via browser: sem um
+    // cliente ativo no cookie, nem tenta salvar.
+    const clienteAtivoId = lerClienteAtivoIdCookie()
+    if (!clienteAtivoId) {
+      setErro('Nenhum cliente ativo selecionado.')
+      return
+    }
+
     setCarregando('confirmar')
 
     const { error } = await supabase
@@ -55,6 +65,7 @@ export function FormularioRevisao({ despesa }: { despesa: Despesa }) {
         observacoes: observacoes.trim() || null,
       })
       .eq('id', despesa.id)
+      .eq('cliente_id', clienteAtivoId)
 
     if (error) {
       setErro('Não foi possível salvar a despesa.')
@@ -68,11 +79,22 @@ export function FormularioRevisao({ despesa }: { despesa: Despesa }) {
 
   async function handleDescartar() {
     setErro(null)
+
+    const clienteAtivoId = lerClienteAtivoIdCookie()
+    if (!clienteAtivoId) {
+      setErro('Nenhum cliente ativo selecionado.')
+      return
+    }
+
     setCarregando('descartar')
 
     await supabase.storage.from('receipts').remove([despesa.image_path])
 
-    const { error } = await supabase.from('expenses').delete().eq('id', despesa.id)
+    const { error } = await supabase
+      .from('expenses')
+      .delete()
+      .eq('id', despesa.id)
+      .eq('cliente_id', clienteAtivoId)
 
     if (error) {
       setErro('Não foi possível descartar a despesa.')

@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { obterClienteAtivo } from '@/lib/clienteAtivo'
 import { obterCategoria } from '@/lib/categorias'
 import { formatarMoeda, formatarDataBR } from '@/lib/formatadores'
+import { CabecalhoCliente } from '@/components/CabecalhoCliente'
 
 const NOMES_MESES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -34,10 +36,15 @@ export default async function DespesasPage() {
     redirect('/login')
   }
 
+  // Isolamento por cliente: toda busca de despesas filtra também por
+  // cliente_id do cliente ativo, nunca só por user_id.
+  const clienteAtivo = await obterClienteAtivo()
+
   const { data: despesas } = await supabase
     .from('expenses')
     .select('id, merchant_name, amount, expense_date, category')
     .eq('user_id', user.id)
+    .eq('cliente_id', clienteAtivo.id)
     .eq('status', 'confirmado')
     .order('expense_date', { ascending: false })
 
@@ -71,6 +78,8 @@ export default async function DespesasPage() {
   return (
     <div className="min-h-screen bg-[#080810] px-4 py-6 text-white">
       <div className="mx-auto flex w-full max-w-md flex-col gap-6">
+        <CabecalhoCliente nome={clienteAtivo.nome} />
+
         {/* Link "← Início" removido: já coberto pelo item "Início" do menu inferior */}
         <header className="flex items-center justify-end">
           <Link

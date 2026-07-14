@@ -1,5 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { obterClienteAtivo } from '@/lib/clienteAtivo'
 import { FormularioRevisao } from './FormularioRevisao'
 
 export default async function RevisarDespesaPage({
@@ -18,12 +19,15 @@ export default async function RevisarDespesaPage({
     redirect('/login')
   }
 
-  // Filtra também por user_id como reforço de segurança além do RLS
+  const clienteAtivo = await obterClienteAtivo()
+
+  // Filtro triplo: id + user_id + cliente_id do cliente ativo
   const { data: despesa, error } = await supabase
     .from('expenses')
     .select('*')
     .eq('id', id)
     .eq('user_id', user.id)
+    .eq('cliente_id', clienteAtivo.id)
     .single()
 
   if (error || !despesa) {

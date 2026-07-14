@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { obterClienteAtivo } from '@/lib/clienteAtivo'
 import { formatarMoeda, formatarDataBR } from '@/lib/formatadores'
 import { obterStatusReembolso } from '@/lib/statusReembolso'
+import { CabecalhoCliente } from '@/components/CabecalhoCliente'
 
 type Lote = {
   id: string
@@ -24,10 +26,15 @@ export default async function ReembolsoPage() {
     redirect('/login')
   }
 
+  const clienteAtivo = await obterClienteAtivo()
+
+  // Lotes de reembolso sempre filtrados pelo cliente ativo — nunca existe
+  // uma visão "todos os clientes juntos"
   const { data: lotes } = await supabase
     .from('reimbursement_batches')
     .select('id, period_start, period_end, total_amount, status, pdf_path')
     .eq('user_id', user.id)
+    .eq('cliente_id', clienteAtivo.id)
     .order('period_end', { ascending: false })
 
   const listaLotes = (lotes ?? []) as Lote[]
@@ -46,6 +53,8 @@ export default async function ReembolsoPage() {
   return (
     <div className="min-h-screen bg-[#080810] px-4 py-6 text-white">
       <div className="mx-auto flex w-full max-w-md flex-col gap-6">
+        <CabecalhoCliente nome={clienteAtivo.nome} />
+
         {/* Link "← Despesas" removido: já coberto pelo item "Histórico" do menu inferior */}
         <header className="flex items-center justify-end">
           <Link

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { obterClienteAtivo } from '@/lib/clienteAtivo'
 
 export async function POST(request: NextRequest) {
   const { expenseIds } = (await request.json()) as { expenseIds?: string[] }
@@ -7,6 +8,8 @@ export async function POST(request: NextRequest) {
   if (!expenseIds || expenseIds.length === 0) {
     return NextResponse.json({ error: 'Selecione ao menos uma despesa' }, { status: 400 })
   }
+
+  const clienteAtivo = await obterClienteAtivo()
 
   const supabase = await createClient()
 
@@ -19,16 +22,32 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Filtra também por user_id como reforço de segurança além do RLS
+    // Filtra também por user_id e cliente_id como reforço de segurança além do RLS
     const { data: despesas, error: erroBusca } = await supabase
       .from('expenses')
       .select('id, amount, expense_date')
       .in('id', expenseIds)
       .eq('user_id', user.id)
+      .eq('cliente_id', clienteAtivo.id)
 
     if (erroBusca || !despesas || despesas.length === 0) {
       console.error('[/api/reembolso/criar] Erro ao buscar despesas:', erroBusca)
       return NextResponse.json({ error: 'Despesas não encontradas' }, { status: 404 })
+    }
+
+    // Trava de segurança redundante: todas as despesas selecionadas precisam
+    // ter sido encontradas na busca já filtrada por cliente_id acima. Se
+    // algum id sumiu, é porque pertence a outro cliente (ou não existe) —
+    // rejeita a operação inteira em vez de seguir com um subconjunto.
+    if (despesas.length !== expenseIds.length) {
+      console.error(
+        '[/api/reembolso/criar] Uma ou mais despesas selecionadas não pertencem ao cliente ativo',
+        { expenseIds, encontradas: despesas.map((d) => d.id), clienteId: clienteAtivo.id }
+      )
+      return NextResponse.json(
+        { error: 'Uma ou mais despesas selecionadas não pertencem ao cliente ativo' },
+        { status: 403 }
+      )
     }
 
     const datas = despesas
@@ -44,6 +63,7 @@ export async function POST(request: NextRequest) {
       .from('reimbursement_batches')
       .insert({
         user_id: user.id,
+        cliente_id: clienteAtivo.id,
         period_start: periodStart,
         period_end: periodEnd,
         total_amount: totalAmount,
@@ -64,6 +84,7 @@ export async function POST(request: NextRequest) {
       .update({ batch_id: lote.id })
       .in('id', idsEncontrados)
       .eq('user_id', user.id)
+      .eq('cliente_id', clienteAtivo.id)
 
     if (erroAtualizacao) {
       console.error(

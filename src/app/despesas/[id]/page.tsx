@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { obterClienteAtivo } from '@/lib/clienteAtivo'
 import { obterCategoria } from '@/lib/categorias'
 import { formatarMoeda, formatarDataBR } from '@/lib/formatadores'
 
@@ -25,12 +26,16 @@ export default async function DetalheDespesaPage({
     redirect('/login')
   }
 
-  // Filtra também por user_id como reforço de segurança além do RLS
+  const clienteAtivo = await obterClienteAtivo()
+
+  // Filtro triplo: id + user_id + cliente_id do cliente ativo. Uma despesa
+  // de outro cliente nunca deve ser encontrada aqui — cai direto no notFound.
   const { data: despesa, error } = await supabase
     .from('expenses')
     .select('*')
     .eq('id', id)
     .eq('user_id', user.id)
+    .eq('cliente_id', clienteAtivo.id)
     .single()
 
   if (error || !despesa) {
