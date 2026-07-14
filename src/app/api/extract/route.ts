@@ -5,8 +5,6 @@ import { inferirMimeType } from '@/lib/imagemMime'
 
 const anthropic = new Anthropic()
 
-const CATEGORIAS = ['alimentacao', 'transporte', 'hospedagem', 'material', 'outros'] as const
-
 // Remove blocos de markdown (```json ... ```) caso o Claude ignore a instrução de responder só com JSON
 function limparRespostaJson(texto: string) {
   return texto.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()
@@ -17,16 +15,16 @@ type DadosExtraidos = {
   cnpj_emitente: string | null
   amount: number | null
   expense_date: string | null
-  category: (typeof CATEGORIAS)[number] | null
+  category: string | null
 }
 
 function validarDadosExtraidos(json: unknown): DadosExtraidos {
   const dados = json as Record<string, unknown>
 
   const amount = typeof dados.amount === 'number' ? dados.amount : null
-  const category = CATEGORIAS.includes(dados.category as (typeof CATEGORIAS)[number])
-    ? (dados.category as (typeof CATEGORIAS)[number])
-    : null
+  // Categoria é texto livre sugerido pela IA (sem lista fixa) — qualquer string não vazia é aceita
+  const category =
+    typeof dados.category === 'string' && dados.category.trim() ? dados.category.trim() : null
 
   return {
     merchant_name: typeof dados.merchant_name === 'string' ? dados.merchant_name : null,
@@ -91,7 +89,7 @@ export async function POST(request: NextRequest) {
 - CNPJ do emitente, apenas os números ou no formato original encontrado (cnpj_emitente)
 - valor total da despesa, como número decimal, sem símbolo de moeda (amount)
 - data da despesa, no formato YYYY-MM-DD (expense_date)
-- uma categoria sugerida, escolhida exatamente entre: alimentacao, transporte, hospedagem, material, outros (category)
+- uma categoria curta e descritiva em português para o tipo de despesa/serviço, com no máximo 2-3 palavras, capturando o tipo real do estabelecimento (ex: "Farmácia", "Estacionamento", "Manutenção veicular", "Papelaria", "Restaurante") — não se prenda a uma lista fixa, identifique livremente (category)
 
 Responda APENAS com um JSON válido, sem nenhum texto adicional, sem markdown e sem crases. Se algum campo não puder ser identificado com confiança, use null para esse campo. Formato exato da resposta:
 

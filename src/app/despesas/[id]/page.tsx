@@ -86,6 +86,13 @@ export default async function DetalheDespesaPage({
           />
         </div>
 
+        {despesa.observacoes && (
+          <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 p-5">
+            <span className="text-sm text-white/50">Observações</span>
+            <p className="whitespace-pre-wrap text-white/90">{despesa.observacoes}</p>
+          </div>
+        )}
+
         <Link
           href={`/despesas/revisar/${despesa.id}`}
           className="w-full rounded-xl bg-[#6333ff] py-4 text-center text-lg font-semibold text-white"

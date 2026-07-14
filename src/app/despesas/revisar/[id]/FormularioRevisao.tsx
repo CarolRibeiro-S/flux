@@ -4,13 +4,16 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
-const CATEGORIAS = [
-  { valor: 'alimentacao', rotulo: 'Alimentação' },
-  { valor: 'transporte', rotulo: 'Transporte' },
-  { valor: 'hospedagem', rotulo: 'Hospedagem' },
-  { valor: 'material', rotulo: 'Material' },
-  { valor: 'outros', rotulo: 'Outros' },
-] as const
+// Sugestões rápidas exibidas no datalist — a categoria continua sendo texto livre
+const SUGESTOES_CATEGORIA = [
+  'Alimentação',
+  'Transporte',
+  'Hospedagem',
+  'Material',
+  'Farmácia',
+  'Estacionamento',
+  'Outros',
+]
 
 type Despesa = {
   id: string
@@ -19,6 +22,7 @@ type Despesa = {
   amount: number | null
   expense_date: string | null
   category: string | null
+  observacoes: string | null
   image_path: string
 }
 
@@ -30,7 +34,8 @@ export function FormularioRevisao({ despesa }: { despesa: Despesa }) {
   const [cnpj, setCnpj] = useState(despesa.cnpj_emitente ?? '')
   const [valor, setValor] = useState(despesa.amount?.toString() ?? '')
   const [data, setData] = useState(despesa.expense_date ?? '')
-  const [categoria, setCategoria] = useState(despesa.category ?? 'outros')
+  const [categoria, setCategoria] = useState(despesa.category ?? '')
+  const [observacoes, setObservacoes] = useState(despesa.observacoes ?? '')
   const [carregando, setCarregando] = useState<'confirmar' | 'descartar' | null>(null)
   const [erro, setErro] = useState<string | null>(null)
 
@@ -46,7 +51,8 @@ export function FormularioRevisao({ despesa }: { despesa: Despesa }) {
         cnpj_emitente: cnpj || null,
         amount: valor ? Number(valor) : null,
         expense_date: data || null,
-        category: categoria,
+        category: categoria.trim() || null,
+        observacoes: observacoes.trim() || null,
       })
       .eq('id', despesa.id)
 
@@ -140,18 +146,34 @@ export function FormularioRevisao({ despesa }: { despesa: Despesa }) {
         <label htmlFor="categoria" className="text-sm text-white/80">
           Categoria
         </label>
-        <select
+        <input
           id="categoria"
+          type="text"
+          list="sugestoes-categoria"
+          placeholder="Ex: Farmácia, Estacionamento, Restaurante"
           value={categoria}
           onChange={(e) => setCategoria(e.target.value)}
           className="rounded-lg border border-white/10 bg-[#0f0f1a] px-3 py-3 text-white outline-none focus:border-[#6333ff]"
-        >
-          {CATEGORIAS.map((c) => (
-            <option key={c.valor} value={c.valor}>
-              {c.rotulo}
-            </option>
+        />
+        <datalist id="sugestoes-categoria">
+          {SUGESTOES_CATEGORIA.map((sugestao) => (
+            <option key={sugestao} value={sugestao} />
           ))}
-        </select>
+        </datalist>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label htmlFor="observacoes" className="text-sm text-white/80">
+          Observações
+        </label>
+        <textarea
+          id="observacoes"
+          rows={3}
+          placeholder="Ex: reunião com cliente X, viagem a trabalho"
+          value={observacoes}
+          onChange={(e) => setObservacoes(e.target.value)}
+          className="resize-none rounded-lg border border-white/10 bg-[#0f0f1a] px-3 py-3 text-white outline-none focus:border-[#6333ff]"
+        />
       </div>
 
       {erro && <p className="text-sm text-red-400">{erro}</p>}
