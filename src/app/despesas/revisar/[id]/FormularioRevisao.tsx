@@ -24,6 +24,7 @@ type Despesa = {
   expense_date: string | null
   category: string | null
   observacoes: string | null
+  precisa_reembolso: boolean | null
   image_path: string
 }
 
@@ -37,6 +38,9 @@ export function FormularioRevisao({ despesa }: { despesa: Despesa }) {
   const [data, setData] = useState(despesa.expense_date ?? '')
   const [categoria, setCategoria] = useState(despesa.category ?? '')
   const [observacoes, setObservacoes] = useState(despesa.observacoes ?? '')
+  // Padrão true ("Sim, eu paguei") quando a coluna ainda não tiver um valor
+  // definido — mesmo default da migration (precisa_reembolso boolean default true)
+  const [precisaReembolso, setPrecisaReembolso] = useState(despesa.precisa_reembolso ?? true)
   const [carregando, setCarregando] = useState<'confirmar' | 'descartar' | null>(null)
   const [erro, setErro] = useState<string | null>(null)
 
@@ -63,6 +67,7 @@ export function FormularioRevisao({ despesa }: { despesa: Despesa }) {
         expense_date: data || null,
         category: categoria.trim() || null,
         observacoes: observacoes.trim() || null,
+        precisa_reembolso: precisaReembolso,
       })
       .eq('id', despesa.id)
       .eq('cliente_id', clienteAtivoId)
@@ -196,6 +201,36 @@ export function FormularioRevisao({ despesa }: { despesa: Despesa }) {
           onChange={(e) => setObservacoes(e.target.value)}
           className="resize-none rounded-lg border border-white/10 bg-[#0f0f1a] px-3 py-3 text-white outline-none focus:border-[#6333ff]"
         />
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <span className="text-sm text-white/80">Esta despesa precisa de reembolso?</span>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setPrecisaReembolso(true)}
+            aria-pressed={precisaReembolso}
+            className={`flex-1 rounded-lg border py-3 text-sm font-semibold transition-colors ${
+              precisaReembolso
+                ? 'border-[#6333ff] bg-[#6333ff]/15 text-[#6333ff]'
+                : 'border-white/10 bg-[#0f0f1a] text-white/50'
+            }`}
+          >
+            Sim, eu paguei
+          </button>
+          <button
+            type="button"
+            onClick={() => setPrecisaReembolso(false)}
+            aria-pressed={!precisaReembolso}
+            className={`flex-1 rounded-lg border py-3 text-sm font-semibold transition-colors ${
+              !precisaReembolso
+                ? 'border-white/40 bg-white/10 text-white'
+                : 'border-white/10 bg-[#0f0f1a] text-white/50'
+            }`}
+          >
+            Não, cartão da casa
+          </button>
+        </div>
       </div>
 
       {erro && <p className="text-sm text-red-400">{erro}</p>}

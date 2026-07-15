@@ -17,14 +17,17 @@ export default async function NovoReembolsoPage() {
 
   const clienteAtivo = await obterClienteAtivo()
 
-  // Só despesas confirmadas do cliente ativo que ainda não entraram em
-  // nenhum lote de reembolso — a lista já chega filtrada para SeletorDespesas
+  // Só despesas confirmadas do cliente ativo, marcadas como precisando de
+  // reembolso (precisa_reembolso = true — despesas pagas no cartão da casa
+  // não fazem sentido num lote de reembolso) e que ainda não entraram em
+  // nenhum lote — a lista já chega filtrada para SeletorDespesas
   const { data: despesas } = await supabase
     .from('expenses')
     .select('id, merchant_name, category, amount, expense_date')
     .eq('user_id', user.id)
     .eq('cliente_id', clienteAtivo.id)
     .eq('status', 'confirmado')
+    .eq('precisa_reembolso', true)
     .is('batch_id', null)
     .order('expense_date', { ascending: false })
 

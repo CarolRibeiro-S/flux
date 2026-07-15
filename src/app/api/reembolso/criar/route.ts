@@ -35,13 +35,16 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Filtra também por user_id e cliente_id como reforço de segurança além do RLS
+    // Filtra também por user_id e cliente_id como reforço de segurança além
+    // do RLS, e por precisa_reembolso = true — nunca confia só no filtro já
+    // aplicado na tela (despesas pagas no cartão da casa não entram em lote)
     const { data: despesas, error: erroBusca } = await supabase
       .from('expenses')
       .select('id, amount, expense_date')
       .in('id', expenseIds)
       .eq('user_id', user.id)
       .eq('cliente_id', clienteAtivo.id)
+      .eq('precisa_reembolso', true)
 
     if (erroBusca || !despesas || despesas.length === 0) {
       console.error('[/api/reembolso/criar] Erro ao buscar despesas:', erroBusca)

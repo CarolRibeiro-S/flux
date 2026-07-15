@@ -89,6 +89,17 @@ export default async function DetalheDespesaPage({
             rotulo="Data"
             valor={despesa.expense_date ? formatarDataBR(despesa.expense_date) : '—'}
           />
+
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-white/50">Precisa de reembolso</span>
+            {despesa.precisa_reembolso ? (
+              <span className="rounded-full bg-[#6333ff]/15 px-2.5 py-1 text-xs font-semibold text-[#6333ff]">
+                Sim
+              </span>
+            ) : (
+              <span className="text-sm font-medium text-white/60">Não</span>
+            )}
+          </div>
         </div>
 
         {despesa.observacoes && (

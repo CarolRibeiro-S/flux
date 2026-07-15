@@ -2,9 +2,9 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { obterClienteAtivo } from '@/lib/clienteAtivo'
-import { obterCategoria } from '@/lib/categorias'
 import { formatarMoeda, formatarDataBR } from '@/lib/formatadores'
 import { obterStatusReembolso } from '@/lib/statusReembolso'
+import { GerenciarLote } from './GerenciarLote'
 
 type Despesa = {
   id: string
@@ -113,45 +113,7 @@ export default async function DetalheReembolsoPage({
           )}
         </div>
 
-        <div>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-white/60">
-            Despesas incluídas
-          </h2>
-
-          <div className="flex flex-col gap-2">
-            {listaDespesas.map((despesa) => {
-              const categoria = obterCategoria(despesa.category)
-              return (
-                <div
-                  key={despesa.id}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg"
-                      style={{ backgroundColor: `${categoria.cor}33` }}
-                    >
-                      {categoria.icone}
-                    </span>
-                    <div>
-                      <p className="font-medium">{despesa.merchant_name ?? 'Sem nome'}</p>
-                      <p className="text-xs" style={{ color: categoria.cor }}>
-                        {categoria.rotulo}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <p className="font-semibold">{formatarMoeda(despesa.amount ?? 0)}</p>
-                    <p className="text-xs text-white/50">
-                      {despesa.expense_date ? formatarDataBR(despesa.expense_date) : '—'}
-                    </p>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        <GerenciarLote loteId={lote.id} status={lote.status} despesas={listaDespesas} />
       </div>
     </div>
   )

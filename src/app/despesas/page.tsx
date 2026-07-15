@@ -17,6 +17,8 @@ type Despesa = {
   amount: number | null
   expense_date: string | null
   category: string | null
+  observacoes: string | null
+  precisa_reembolso: boolean | null
 }
 
 type Grupo = {
@@ -42,7 +44,7 @@ export default async function DespesasPage() {
 
   const { data: despesas } = await supabase
     .from('expenses')
-    .select('id, merchant_name, amount, expense_date, category')
+    .select('id, merchant_name, amount, expense_date, category, observacoes, precisa_reembolso')
     .eq('user_id', user.id)
     .eq('cliente_id', clienteAtivo.id)
     .eq('status', 'confirmado')
@@ -121,29 +123,48 @@ export default async function DespesasPage() {
                   <Link
                     key={despesa.id}
                     href={`/despesas/${despesa.id}`}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 transition-colors hover:bg-white/10"
+                    className="flex flex-col gap-1.5 rounded-xl border border-white/10 bg-white/5 px-4 py-3 transition-colors hover:bg-white/10"
                   >
-                    <div className="flex items-center gap-3">
-                      <span
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg"
-                        style={{ backgroundColor: `${categoria.cor}33` }}
-                      >
-                        {categoria.icone}
-                      </span>
-                      <div>
-                        <p className="font-medium">{despesa.merchant_name ?? 'Sem nome'}</p>
-                        <p className="text-xs" style={{ color: categoria.cor }}>
-                          {categoria.rotulo}
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <span
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg"
+                          style={{ backgroundColor: `${categoria.cor}33` }}
+                        >
+                          {categoria.icone}
+                        </span>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium">{despesa.merchant_name ?? 'Sem nome'}</p>
+                            {/* Só aparece quando true — o caso "não precisa" fica
+                                sem nenhuma etiqueta, o visual mais neutro possível */}
+                            {despesa.precisa_reembolso && (
+                              <span className="shrink-0 rounded-full bg-[#6333ff]/15 px-2 py-0.5 text-[10px] font-semibold text-[#6333ff]">
+                                Reembolsável
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs" style={{ color: categoria.cor }}>
+                            {categoria.rotulo}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <p className="font-semibold">{formatarMoeda(despesa.amount ?? 0)}</p>
+                        <p className="text-xs text-white/50">
+                          {despesa.expense_date ? formatarDataBR(despesa.expense_date) : '—'}
                         </p>
                       </div>
                     </div>
 
-                    <div className="text-right">
-                      <p className="font-semibold">{formatarMoeda(despesa.amount ?? 0)}</p>
-                      <p className="text-xs text-white/50">
-                        {despesa.expense_date ? formatarDataBR(despesa.expense_date) : '—'}
+                    {/* Observação: só ocupa espaço quando preenchida, sem rótulo
+                        solto nem linha vazia quando a despesa não tem uma */}
+                    {despesa.observacoes && (
+                      <p className="truncate pl-12 text-xs text-white/40">
+                        {despesa.observacoes}
                       </p>
-                    </div>
+                    )}
                   </Link>
                 )
               })}

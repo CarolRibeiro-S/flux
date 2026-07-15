@@ -13,7 +13,15 @@ type Despesa = {
   expense_date: string | null
 }
 
-export function SeletorDespesas({ despesas }: { despesas: Despesa[] }) {
+type Props = {
+  despesas: Despesa[]
+  // Sem loteId: cria um reembolso novo (fluxo original, POST
+  // /api/reembolso/criar). Com loteId: adiciona as despesas selecionadas a
+  // um lote já existente (POST /api/reembolso/[id]/despesas).
+  loteId?: string
+}
+
+export function SeletorDespesas({ despesas, loteId }: Props) {
   const router = useRouter()
 
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set())
@@ -64,20 +72,38 @@ export function SeletorDespesas({ despesas }: { despesas: Despesa[] }) {
     setCarregando(true)
 
     try {
-      const response = await fetch('/api/reembolso/criar', {
+      const url = loteId ? `/api/reembolso/${loteId}/despesas` : '/api/reembolso/criar'
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ expenseIds: [...selecionadas] }),
       })
 
-      if (!response.ok) {
-        throw new Error('Não foi possível gerar o reembolso.')
+      // Lê como texto primeiro pra nunca quebrar com um erro de parse cru
+      // caso a resposta não seja JSON (mesmo padrão usado em CapturaDespesa.tsx)
+      const corpoTexto = await response.text()
+      let corpo: { id?: string; error?: string } | null = null
+      try {
+        corpo = corpoTexto ? JSON.parse(corpoTexto) : null
+      } catch {
+        corpo = null
       }
 
-      const { id } = await response.json()
-      router.push(`/despesas/reembolso/${id}`)
+      if (!response.ok) {
+        throw new Error(corpo?.error ?? 'Não foi possível salvar o reembolso.')
+      }
+
+      // Adicionando a um lote existente já sabemos o destino (loteId); só ao
+      // criar um novo lote a resposta traz o id gerado.
+      const idDestino = loteId ?? corpo?.id
+      if (!idDestino) {
+        throw new Error('Resposta inesperada do servidor.')
+      }
+
+      router.push(`/despesas/reembolso/${idDestino}`)
+      router.refresh()
     } catch (error) {
-      setErro(error instanceof Error ? error.message : 'Erro ao gerar o reembolso.')
+      setErro(error instanceof Error ? error.message : 'Erro ao salvar o reembolso.')
       setCarregando(false)
     }
   }
@@ -171,7 +197,11 @@ export function SeletorDespesas({ despesas }: { despesas: Despesa[] }) {
         disabled={selecionadas.size === 0 || carregando}
         className="w-full rounded-xl bg-[#6333ff] py-4 text-lg font-semibold text-white transition-opacity disabled:opacity-40"
       >
-        {carregando ? 'Gerando...' : 'Gerar reembolso'}
+        {carregando
+          ? 'Salvando...'
+          : loteId
+            ? 'Adicionar ao reembolso'
+            : 'Gerar reembolso'}
       </button>
     </div>
   )
