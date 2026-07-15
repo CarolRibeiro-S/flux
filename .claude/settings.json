@@ -31,7 +31,8 @@
       "Bash(curl -s http://localhost:3000/login -o /tmp/login.html -w \"HTTP %{http_code}\\\\n\")",
       "Bash(taskkill //F //IM node.exe //FI \"WINDOWTITLE eq *\")",
       "Bash(netstat -ano)",
-      "Bash(taskkill //F //PID 11040)"
+      "Bash(taskkill //F //PID 11040)",
+      "Bash(./gradlew assembleDebug --console=plain)"
     ]
   }
 }

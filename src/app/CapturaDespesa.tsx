@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Camera, Images } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { uploadReceiptImage } from '@/lib/supabase/upload'
 import { CabecalhoCliente } from '@/components/CabecalhoCliente'
@@ -11,7 +12,11 @@ type Status = 'idle' | 'uploading' | 'extracting'
 export function CapturaDespesa({ clienteNome }: { clienteNome: string }) {
   const router = useRouter()
   const supabase = createClient()
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  // Dois inputs separados: um força a câmera (capture="environment"), o
+  // outro abre o seletor de arquivos/galeria normal do aparelho — sem o
+  // atributo capture, que é justamente o que escondia a opção de galeria.
+  const inputCameraRef = useRef<HTMLInputElement>(null)
+  const inputGaleriaRef = useRef<HTMLInputElement>(null)
 
   const [userId, setUserId] = useState<string | null>(null)
   const [file, setFile] = useState<File | null>(null)
@@ -45,7 +50,8 @@ export function CapturaDespesa({ clienteNome }: { clienteNome: string }) {
     setFile(null)
     setPreviewUrl(null)
     setErrorMsg(null)
-    if (fileInputRef.current) fileInputRef.current.value = ''
+    if (inputCameraRef.current) inputCameraRef.current.value = ''
+    if (inputGaleriaRef.current) inputGaleriaRef.current.value = ''
   }
 
   async function handleEnviar() {
@@ -124,8 +130,9 @@ export function CapturaDespesa({ clienteNome }: { clienteNome: string }) {
       </div>
 
       <main className="flex flex-1 flex-col items-center justify-center px-6 py-10">
+        {/* Input com capture: força a abertura direta da câmera */}
         <input
-          ref={fileInputRef}
+          ref={inputCameraRef}
           type="file"
           accept="image/*"
           capture="environment"
@@ -133,28 +140,37 @@ export function CapturaDespesa({ clienteNome }: { clienteNome: string }) {
           className="hidden"
         />
 
+        {/* Input sem capture: abre o seletor normal de arquivos/galeria do
+            aparelho, permitindo escolher uma imagem já salva (ex: uma NF
+            recebida por WhatsApp/e-mail) */}
+        <input
+          ref={inputGaleriaRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+
         {!previewUrl ? (
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex w-full max-w-xs flex-col items-center justify-center gap-4 rounded-3xl bg-[#6333ff] px-8 py-14 text-white shadow-xl shadow-[#6333ff]/30 transition-transform active:scale-95"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              className="h-14 w-14"
-              aria-hidden="true"
+          <div className="flex w-full max-w-xs flex-col gap-4">
+            <button
+              type="button"
+              onClick={() => inputCameraRef.current?.click()}
+              className="flex flex-col items-center justify-center gap-4 rounded-3xl bg-[#6333ff] px-8 py-14 text-white shadow-xl shadow-[#6333ff]/30 transition-transform active:scale-95"
             >
-              <path
-                d="M4 8a2 2 0 0 1 2-2h1.5l.9-1.5A1.5 1.5 0 0 1 9.7 3.7h4.6a1.5 1.5 0 0 1 1.3.8L16.5 6H18a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinejoin="round"
-              />
-              <circle cx="12" cy="13" r="3.5" stroke="currentColor" strokeWidth="1.6" />
-            </svg>
-            <span className="text-lg font-semibold">Adicionar despesa</span>
-          </button>
+              <Camera className="h-14 w-14" strokeWidth={1.6} aria-hidden="true" />
+              <span className="text-lg font-semibold">Tirar foto</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => inputGaleriaRef.current?.click()}
+              className="flex flex-col items-center justify-center gap-3 rounded-3xl border border-[#00c8c8]/40 bg-[#00c8c8]/10 px-8 py-8 text-[#00c8c8] transition-transform active:scale-95"
+            >
+              <Images className="h-9 w-9" strokeWidth={1.6} aria-hidden="true" />
+              <span className="text-base font-semibold">Escolher da galeria</span>
+            </button>
+          </div>
         ) : (
           <div className="flex w-full max-w-xs flex-col items-center gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -38,4 +38,14 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Usada pelo input type="file" com capture="environment" (botão
+         "Tirar foto"). Sem essa declaração explícita o app depende só da
+         delegação ao app de câmera do sistema, o que pode falhar em
+         fabricantes/versões de Android mais restritivos. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- required="false": o app também aceita seleção de imagem via galeria
+         (input sem capture), então não deve ficar indisponível na Play Store
+         para aparelhos sem câmera física (ex: alguns tablets). -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 </manifest>
