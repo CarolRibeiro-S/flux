@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { obterClienteAtivo } from '@/lib/clienteAtivo'
+import { obterClienteAtivoApi, ClienteAtivoInvalidoError } from '@/lib/clienteAtivo'
 
 export async function POST(request: NextRequest) {
   const { expenseIds } = (await request.json()) as { expenseIds?: string[] }
@@ -9,7 +9,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Selecione ao menos uma despesa' }, { status: 400 })
   }
 
-  const clienteAtivo = await obterClienteAtivo()
+  // Nunca redireciona (ver comentário em obterClienteAtivoApi): responde
+  // com JSON de erro para o front-end conseguir interpretar
+  let clienteAtivo
+  try {
+    clienteAtivo = await obterClienteAtivoApi()
+  } catch (error) {
+    if (error instanceof ClienteAtivoInvalidoError) {
+      return NextResponse.json(
+        { error: 'Nenhum cliente ativo selecionado. Selecione um cliente e tente novamente.' },
+        { status: 400 }
+      )
+    }
+    throw error
+  }
 
   const supabase = await createClient()
 

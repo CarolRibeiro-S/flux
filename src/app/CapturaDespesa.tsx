@@ -67,12 +67,30 @@ export function CapturaDespesa({ clienteNome }: { clienteNome: string }) {
         body: JSON.stringify({ imagePath }),
       })
 
-      if (!response.ok) {
-        throw new Error('Não foi possível processar a nota fiscal.')
+      // Lê como texto primeiro e só então tenta interpretar como JSON: se a
+      // resposta vier em outro formato (ex: uma página HTML, caso algo no
+      // caminho — proxy, sessão, cookie — acabe devolvendo um redirect que o
+      // fetch segue silenciosamente), evita que JSON.parse quebre com uma
+      // mensagem técnica ilegível. Mostra sempre uma mensagem compreensível.
+      const corpoTexto = await response.text()
+      let corpo: { id?: string; error?: string } | null = null
+      try {
+        corpo = corpoTexto ? JSON.parse(corpoTexto) : null
+      } catch {
+        corpo = null
       }
 
-      const { id } = await response.json()
-      router.push(`/despesas/revisar/${id}`)
+      if (!response.ok) {
+        throw new Error(
+          corpo?.error ?? `Não foi possível processar a nota fiscal (erro ${response.status}).`
+        )
+      }
+
+      if (!corpo?.id) {
+        throw new Error('Resposta inesperada do servidor ao processar a nota fiscal.')
+      }
+
+      router.push(`/despesas/revisar/${corpo.id}`)
     } catch (error) {
       setErrorMsg(error instanceof Error ? error.message : 'Erro ao enviar a despesa.')
       setStatus('idle')

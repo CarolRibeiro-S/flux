@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { obterStatusPin } from '@/lib/pinVerificado'
 import { SeletorClienteAtivo } from './SeletorClienteAtivo'
 
 export default async function SelecionarClientePage() {
@@ -12,6 +13,17 @@ export default async function SelecionarClientePage() {
 
   if (!user) {
     redirect('/login')
+  }
+
+  // PIN de segurança: os nomes dos clientes só podem ser buscados depois
+  // dessa checagem. redirect() interrompe a execução desta função aqui —
+  // a query de clientes abaixo nunca roda sem PIN validado.
+  const statusPin = await obterStatusPin(user.id)
+  if (statusPin.situacao === 'sem_pin_configurado') {
+    redirect('/configurar-pin')
+  }
+  if (statusPin.situacao === 'pin_nao_verificado') {
+    redirect('/verificar-pin')
   }
 
   // Lista todos os clientes do usuário apenas para ele escolher qual fica

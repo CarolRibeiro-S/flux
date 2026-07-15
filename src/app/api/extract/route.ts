@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { inferirMimeType } from '@/lib/imagemMime'
-import { obterClienteAtivo } from '@/lib/clienteAtivo'
+import { obterClienteAtivoApi, ClienteAtivoInvalidoError } from '@/lib/clienteAtivo'
 
 const anthropic = new Anthropic()
 
@@ -46,9 +46,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'imagePath é obrigatório' }, { status: 400 })
   }
 
-  // Resolve o cliente ativo a partir do cookie, validado no banco. Redireciona
-  // para /selecionar-cliente (via obterClienteAtivo) se não houver um válido.
-  const clienteAtivo = await obterClienteAtivo()
+  // Resolve o cliente ativo a partir do cookie, validado no banco. Diferente
+  // de obterClienteAtivo() (usado em páginas), esta variante NUNCA
+  // redireciona — responde com JSON de erro, que é o que o front-end
+  // consegue interpretar de uma chamada fetch().
+  let clienteAtivo
+  try {
+    clienteAtivo = await obterClienteAtivoApi()
+  } catch (error) {
+    if (error instanceof ClienteAtivoInvalidoError) {
+      return NextResponse.json(
+        { error: 'Nenhum cliente ativo selecionado. Selecione um cliente e tente novamente.' },
+        { status: 400 }
+      )
+    }
+    throw error
+  }
 
   const supabase = await createClient()
 
