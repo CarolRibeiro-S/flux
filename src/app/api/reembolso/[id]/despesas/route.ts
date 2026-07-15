@@ -41,82 +41,92 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: loteId } = await params
-  const { expenseId } = (await request.json()) as { expenseId?: string }
 
-  if (!expenseId) {
-    return NextResponse.json({ error: 'expenseId é obrigatório' }, { status: 400 })
-  }
-
-  let clienteAtivo
   try {
-    clienteAtivo = await obterClienteAtivoApi()
-  } catch (error) {
-    if (error instanceof ClienteAtivoInvalidoError) {
-      return NextResponse.json({ error: 'Nenhum cliente ativo selecionado.' }, { status: 400 })
+    const { expenseId } = (await request.json()) as { expenseId?: string }
+
+    if (!expenseId) {
+      return NextResponse.json({ error: 'expenseId é obrigatório' }, { status: 400 })
     }
-    throw error
-  }
 
-  const supabase = await createClient()
+    let clienteAtivo
+    try {
+      clienteAtivo = await obterClienteAtivoApi()
+    } catch (error) {
+      if (error instanceof ClienteAtivoInvalidoError) {
+        return NextResponse.json({ error: 'Nenhum cliente ativo selecionado.' }, { status: 400 })
+      }
+      throw error
+    }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+    const supabase = await createClient()
 
-  if (!user) {
-    return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-  }
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-  // Confirma que o lote é do cliente ativo antes de qualquer alteração
-  const { data: lote, error: erroLote } = await supabase
-    .from('reimbursement_batches')
-    .select('id, status')
-    .eq('id', loteId)
-    .eq('user_id', user.id)
-    .eq('cliente_id', clienteAtivo.id)
-    .single()
+    if (!user) {
+      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+    }
 
-  if (erroLote || !lote) {
-    return NextResponse.json({ error: 'Lote não encontrado' }, { status: 404 })
-  }
+    // Confirma que o lote é do cliente ativo antes de qualquer alteração
+    const { data: lote, error: erroLote } = await supabase
+      .from('reimbursement_batches')
+      .select('id, status')
+      .eq('id', loteId)
+      .eq('user_id', user.id)
+      .eq('cliente_id', clienteAtivo.id)
+      .single()
 
-  if (lote.status === 'pago') {
-    return NextResponse.json(
-      { error: 'Reembolso já marcado como pago não pode mais ser editado' },
-      { status: 409 }
-    )
-  }
+    if (erroLote || !lote) {
+      return NextResponse.json({ error: 'Lote não encontrado' }, { status: 404 })
+    }
 
-  // Confirma que a despesa realmente pertence a este lote E ao cliente
-  // ativo antes de desvinculá-la — nunca confia só no id vindo do front-end.
-  const { data: despesa, error: erroDespesa } = await supabase
-    .from('expenses')
-    .select('id')
-    .eq('id', expenseId)
-    .eq('batch_id', loteId)
-    .eq('user_id', user.id)
-    .eq('cliente_id', clienteAtivo.id)
-    .single()
+    if (lote.status === 'pago') {
+      return NextResponse.json(
+        { error: 'Reembolso já marcado como pago não pode mais ser editado' },
+        { status: 409 }
+      )
+    }
 
-  if (erroDespesa || !despesa) {
-    return NextResponse.json({ error: 'Despesa não encontrada neste lote' }, { status: 404 })
-  }
+    // Confirma que a despesa realmente pertence a este lote E ao cliente
+    // ativo antes de desvinculá-la — nunca confia só no id vindo do front-end.
+    const { data: despesa, error: erroDespesa } = await supabase
+      .from('expenses')
+      .select('id')
+      .eq('id', expenseId)
+      .eq('batch_id', loteId)
+      .eq('user_id', user.id)
+      .eq('cliente_id', clienteAtivo.id)
+      .single()
 
-  const { error: erroRemocao } = await supabase
-    .from('expenses')
-    .update({ batch_id: null })
-    .eq('id', expenseId)
-    .eq('user_id', user.id)
-    .eq('cliente_id', clienteAtivo.id)
+    if (erroDespesa || !despesa) {
+      return NextResponse.json({ error: 'Despesa não encontrada neste lote' }, { status: 404 })
+    }
 
-  if (erroRemocao) {
-    console.error('[/api/reembolso/[id]/despesas] Erro ao remover despesa do lote:', erroRemocao)
+    const { error: erroRemocao } = await supabase
+      .from('expenses')
+      .update({ batch_id: null })
+      .eq('id', expenseId)
+      .eq('user_id', user.id)
+      .eq('cliente_id', clienteAtivo.id)
+
+    if (erroRemocao) {
+      console.error('[/api/reembolso/[id]/despesas DELETE] Erro ao remover despesa do lote:', erroRemocao)
+      return NextResponse.json({ error: 'Não foi possível remover a despesa' }, { status: 500 })
+    }
+
+    await recalcularTotais(supabase, loteId, clienteAtivo.id)
+
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error('[/api/reembolso/[id]/despesas DELETE] Erro inesperado', {
+      loteId,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    })
     return NextResponse.json({ error: 'Não foi possível remover a despesa' }, { status: 500 })
   }
-
-  await recalcularTotais(supabase, loteId, clienteAtivo.id)
-
-  return NextResponse.json({ ok: true })
 }
 
 // POST: adiciona despesas extras a um lote já existente
@@ -125,96 +135,106 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: loteId } = await params
-  const { expenseIds } = (await request.json()) as { expenseIds?: string[] }
 
-  if (!expenseIds || expenseIds.length === 0) {
-    return NextResponse.json({ error: 'Selecione ao menos uma despesa' }, { status: 400 })
-  }
-
-  let clienteAtivo
   try {
-    clienteAtivo = await obterClienteAtivoApi()
-  } catch (error) {
-    if (error instanceof ClienteAtivoInvalidoError) {
-      return NextResponse.json({ error: 'Nenhum cliente ativo selecionado.' }, { status: 400 })
+    const { expenseIds } = (await request.json()) as { expenseIds?: string[] }
+
+    if (!expenseIds || expenseIds.length === 0) {
+      return NextResponse.json({ error: 'Selecione ao menos uma despesa' }, { status: 400 })
     }
-    throw error
-  }
 
-  const supabase = await createClient()
+    let clienteAtivo
+    try {
+      clienteAtivo = await obterClienteAtivoApi()
+    } catch (error) {
+      if (error instanceof ClienteAtivoInvalidoError) {
+        return NextResponse.json({ error: 'Nenhum cliente ativo selecionado.' }, { status: 400 })
+      }
+      throw error
+    }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+    const supabase = await createClient()
 
-  if (!user) {
-    return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-  }
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-  const { data: lote, error: erroLote } = await supabase
-    .from('reimbursement_batches')
-    .select('id, status')
-    .eq('id', loteId)
-    .eq('user_id', user.id)
-    .eq('cliente_id', clienteAtivo.id)
-    .single()
+    if (!user) {
+      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+    }
 
-  if (erroLote || !lote) {
-    return NextResponse.json({ error: 'Lote não encontrado' }, { status: 404 })
-  }
+    const { data: lote, error: erroLote } = await supabase
+      .from('reimbursement_batches')
+      .select('id, status')
+      .eq('id', loteId)
+      .eq('user_id', user.id)
+      .eq('cliente_id', clienteAtivo.id)
+      .single()
 
-  if (lote.status === 'pago') {
-    return NextResponse.json(
-      { error: 'Reembolso já marcado como pago não pode mais ser editado' },
-      { status: 409 }
-    )
-  }
+    if (erroLote || !lote) {
+      return NextResponse.json({ error: 'Lote não encontrado' }, { status: 404 })
+    }
 
-  // Só aceita despesas do mesmo cliente ativo, marcadas como precisando de
-  // reembolso, e que ainda não têm batch_id — nunca confia só no filtro já
-  // aplicado na tela (reembolso/novo e reembolso/[id]/adicionar)
-  const { data: despesas, error: erroBusca } = await supabase
-    .from('expenses')
-    .select('id')
-    .in('id', expenseIds)
-    .eq('user_id', user.id)
-    .eq('cliente_id', clienteAtivo.id)
-    .eq('precisa_reembolso', true)
-    .is('batch_id', null)
+    if (lote.status === 'pago') {
+      return NextResponse.json(
+        { error: 'Reembolso já marcado como pago não pode mais ser editado' },
+        { status: 409 }
+      )
+    }
 
-  if (erroBusca || !despesas || despesas.length === 0) {
-    return NextResponse.json({ error: 'Despesas não encontradas' }, { status: 404 })
-  }
+    // Só aceita despesas do mesmo cliente ativo, marcadas como precisando de
+    // reembolso, e que ainda não têm batch_id — nunca confia só no filtro já
+    // aplicado na tela (reembolso/novo e reembolso/[id]/adicionar)
+    const { data: despesas, error: erroBusca } = await supabase
+      .from('expenses')
+      .select('id')
+      .in('id', expenseIds)
+      .eq('user_id', user.id)
+      .eq('cliente_id', clienteAtivo.id)
+      .eq('precisa_reembolso', true)
+      .is('batch_id', null)
 
-  // Trava de segurança redundante, mesmo padrão de /api/reembolso/criar: se
-  // algum id sumiu da busca filtrada, é porque não pertence ao cliente ativo
-  // ou já está vinculado a outro lote — rejeita tudo em vez de seguir parcial.
-  if (despesas.length !== expenseIds.length) {
-    console.error(
-      '[/api/reembolso/[id]/despesas] Uma ou mais despesas não podem ser adicionadas a este lote',
-      { expenseIds, encontradas: despesas.map((d) => d.id), clienteId: clienteAtivo.id }
-    )
-    return NextResponse.json(
-      { error: 'Uma ou mais despesas selecionadas não podem ser adicionadas a este lote' },
-      { status: 403 }
-    )
-  }
+    if (erroBusca || !despesas || despesas.length === 0) {
+      return NextResponse.json({ error: 'Despesas não encontradas' }, { status: 404 })
+    }
 
-  const idsEncontrados = despesas.map((despesa) => despesa.id)
+    // Trava de segurança redundante, mesmo padrão de /api/reembolso/criar: se
+    // algum id sumiu da busca filtrada, é porque não pertence ao cliente ativo
+    // ou já está vinculado a outro lote — rejeita tudo em vez de seguir parcial.
+    if (despesas.length !== expenseIds.length) {
+      console.error(
+        '[/api/reembolso/[id]/despesas POST] Uma ou mais despesas não podem ser adicionadas a este lote',
+        { expenseIds, encontradas: despesas.map((d) => d.id), clienteId: clienteAtivo.id }
+      )
+      return NextResponse.json(
+        { error: 'Uma ou mais despesas selecionadas não podem ser adicionadas a este lote' },
+        { status: 403 }
+      )
+    }
 
-  const { error: erroVinculo } = await supabase
-    .from('expenses')
-    .update({ batch_id: loteId })
-    .in('id', idsEncontrados)
-    .eq('user_id', user.id)
-    .eq('cliente_id', clienteAtivo.id)
+    const idsEncontrados = despesas.map((despesa) => despesa.id)
 
-  if (erroVinculo) {
-    console.error('[/api/reembolso/[id]/despesas] Erro ao adicionar despesas ao lote:', erroVinculo)
+    const { error: erroVinculo } = await supabase
+      .from('expenses')
+      .update({ batch_id: loteId })
+      .in('id', idsEncontrados)
+      .eq('user_id', user.id)
+      .eq('cliente_id', clienteAtivo.id)
+
+    if (erroVinculo) {
+      console.error('[/api/reembolso/[id]/despesas POST] Erro ao adicionar despesas ao lote:', erroVinculo)
+      return NextResponse.json({ error: 'Não foi possível adicionar as despesas' }, { status: 500 })
+    }
+
+    await recalcularTotais(supabase, loteId, clienteAtivo.id)
+
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error('[/api/reembolso/[id]/despesas POST] Erro inesperado', {
+      loteId,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    })
     return NextResponse.json({ error: 'Não foi possível adicionar as despesas' }, { status: 500 })
   }
-
-  await recalcularTotais(supabase, loteId, clienteAtivo.id)
-
-  return NextResponse.json({ ok: true })
 }

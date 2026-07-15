@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { lerClienteAtivoIdCookie } from '@/lib/clienteAtivoCookie'
+import { formatarMoeda, formatarDataBR } from '@/lib/formatadores'
 
 // Sugestões rápidas exibidas no datalist — a categoria continua sendo texto livre
 const SUGESTOES_CATEGORIA = [
@@ -28,9 +29,25 @@ type Despesa = {
   image_path: string
 }
 
-export function FormularioRevisao({ despesa }: { despesa: Despesa }) {
+type DespesaDuplicada = {
+  id: string
+  merchant_name: string | null
+  amount: number | null
+  expense_date: string | null
+}
+
+export function FormularioRevisao({
+  despesa,
+  despesaDuplicada,
+}: {
+  despesa: Despesa
+  despesaDuplicada?: DespesaDuplicada | null
+}) {
   const router = useRouter()
   const supabase = createClient()
+
+  // Some ao dispensar o aviso ("revisar normalmente") ou depois de descartar
+  const [avisoDuplicataVisivel, setAvisoDuplicataVisivel] = useState(Boolean(despesaDuplicada))
 
   const [estabelecimento, setEstabelecimento] = useState(despesa.merchant_name ?? '')
   const [cnpj, setCnpj] = useState(despesa.cnpj_emitente ?? '')
@@ -115,6 +132,38 @@ export function FormularioRevisao({ despesa }: { despesa: Despesa }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {avisoDuplicataVisivel && despesaDuplicada && (
+        <div className="flex flex-col gap-3 rounded-xl border border-orange-400/40 bg-orange-400/10 p-4">
+          <p className="text-sm text-orange-300">
+            ⚠️ Já existe uma despesa parecida (mesmo valor, data e CNPJ) cadastrada para
+            este cliente: <strong>{despesaDuplicada.merchant_name ?? 'Sem nome'}</strong>
+            {' — '}
+            {despesaDuplicada.amount != null ? formatarMoeda(despesaDuplicada.amount) : '—'}
+            {' em '}
+            {despesaDuplicada.expense_date ? formatarDataBR(despesaDuplicada.expense_date) : '—'}
+            . Deseja continuar mesmo assim?
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setAvisoDuplicataVisivel(false)}
+              disabled={desabilitado}
+              className="flex-1 rounded-lg border border-orange-400/40 py-2 text-sm font-semibold text-orange-300 transition-opacity disabled:opacity-50"
+            >
+              Revisar normalmente
+            </button>
+            <button
+              type="button"
+              onClick={handleDescartar}
+              disabled={desabilitado}
+              className="flex-1 rounded-lg bg-orange-400/20 py-2 text-sm font-semibold text-orange-200 transition-opacity disabled:opacity-50"
+            >
+              {carregando === 'descartar' ? 'Descartando...' : 'Descartar esta despesa'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col gap-1">
         <label htmlFor="estabelecimento" className="text-sm text-white/80">
           Estabelecimento

@@ -79,7 +79,9 @@ export function CapturaDespesa({ clienteNome }: { clienteNome: string }) {
       // fetch segue silenciosamente), evita que JSON.parse quebre com uma
       // mensagem técnica ilegível. Mostra sempre uma mensagem compreensível.
       const corpoTexto = await response.text()
-      let corpo: { id?: string; error?: string } | null = null
+      let corpo:
+        | { id?: string; error?: string; possivel_duplicata?: boolean; duplicata_id?: string | null }
+        | null = null
       try {
         corpo = corpoTexto ? JSON.parse(corpoTexto) : null
       } catch {
@@ -96,7 +98,16 @@ export function CapturaDespesa({ clienteNome }: { clienteNome: string }) {
         throw new Error('Resposta inesperada do servidor ao processar a nota fiscal.')
       }
 
-      router.push(`/despesas/revisar/${corpo.id}`)
+      // Encaminha o id da despesa parecida como query string quando a API
+      // sinaliza possível duplicata — é o que faz a tela de revisão exibir o
+      // aviso "⚠️ Já existe uma despesa parecida...". Sem isso, a detecção
+      // feita no servidor nunca chegaria à usuária.
+      const destino =
+        corpo.possivel_duplicata && corpo.duplicata_id
+          ? `/despesas/revisar/${corpo.id}?duplicata=${corpo.duplicata_id}`
+          : `/despesas/revisar/${corpo.id}`
+
+      router.push(destino)
     } catch (error) {
       setErrorMsg(error instanceof Error ? error.message : 'Erro ao enviar a despesa.')
       setStatus('idle')

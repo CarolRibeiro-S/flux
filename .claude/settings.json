@@ -32,7 +32,23 @@
       "Bash(taskkill //F //IM node.exe //FI \"WINDOWTITLE eq *\")",
       "Bash(netstat -ano)",
       "Bash(taskkill //F //PID 11040)",
-      "Bash(./gradlew assembleDebug --console=plain)"
+      "Bash(./gradlew assembleDebug --console=plain)",
+      "Bash(curl -s -o /tmp/delete_resp.json -w \"HTTP %{http_code}\\\\n\" -X DELETE \"http://localhost:3000/api/reembolso/00000000-0000-0000-0000-000000000000\")",
+      "Bash(curl -s -o /tmp/patch_resp.json -w \"HTTP %{http_code}\\\\n\" -X PATCH \"http://localhost:3000/api/reembolso/00000000-0000-0000-0000-000000000000\" -H \"Content-Type: application/json\" -d '{\"status\":\"pago\"}')",
+      "Bash(curl -s -o /tmp/pdf_resp.json -w \"HTTP %{http_code}\\\\n\" -X POST \"http://localhost:3000/api/reembolso/00000000-0000-0000-0000-000000000000/pdf\")",
+      "Bash(curl -s -o /tmp/desp_resp.json -w \"HTTP %{http_code}\\\\n\" -X DELETE \"http://localhost:3000/api/reembolso/00000000-0000-0000-0000-000000000000/despesas\" -H \"Content-Type: application/json\" -d '{\"expenseId\":\"00000000-0000-0000-0000-000000000001\"}')",
+      "PowerShell(npm run dev 2>&1 | Tee-Object -FilePath \"$env:TEMP\\\\flux-dev.log\")",
+      "Bash(seq 1 60)",
+      "Read(//c/Users/anaca/AppData/Local/Temp/**)",
+      "Bash(echo \"READY\")",
+      "Bash(break)",
+      "Bash(echo \"ERROR_IN_LOG\")",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" -X DELETE http://localhost:3000/api/despesas/00000000-0000-0000-0000-000000000000)",
+      "Bash(curl -s -X DELETE http://localhost:3000/api/despesas/00000000-0000-0000-0000-000000000000)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" -X DELETE http://localhost:3000/api/reembolso/00000000-0000-0000-0000-000000000000)",
+      "Bash(curl -s -X DELETE http://localhost:3000/api/reembolso/00000000-0000-0000-0000-000000000000)",
+      "Bash(iconv -f UTF-16LE -t UTF-8 /c/Users/anaca/AppData/Local/Temp/flux-dev.log)",
+      "Bash(echo \"=== full log \\(decoded\\) ===\")"
     ]
   }
 }

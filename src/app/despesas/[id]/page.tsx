@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { obterClienteAtivo } from '@/lib/clienteAtivo'
 import { obterCategoria } from '@/lib/categorias'
 import { formatarMoeda, formatarDataBR } from '@/lib/formatadores'
+import { ExcluirDespesaButton } from './ExcluirDespesaButton'
 
 const ROTULOS_STATUS: Record<string, string> = {
   pendente_revisao: 'Pendente de revisão',
@@ -45,6 +46,25 @@ export default async function DetalheDespesaPage({
   const { data: urlAssinada } = await supabase.storage
     .from('receipts')
     .createSignedUrl(despesa.image_path, 300)
+
+  // Se a despesa está vinculada a um lote, busca o status para saber se a
+  // exclusão deve avisar sobre a remoção do reembolso (lote editável) ou ser
+  // bloqueada (lote já pago). Re-filtra por cliente_id por segurança.
+  let emReembolso = false
+  let reembolsoPago = false
+  if (despesa.batch_id) {
+    const { data: lote } = await supabase
+      .from('reimbursement_batches')
+      .select('status')
+      .eq('id', despesa.batch_id)
+      .eq('cliente_id', clienteAtivo.id)
+      .single()
+
+    if (lote) {
+      emReembolso = true
+      reembolsoPago = lote.status === 'pago'
+    }
+  }
 
   const categoria = obterCategoria(despesa.category)
 
@@ -115,6 +135,12 @@ export default async function DetalheDespesaPage({
         >
           Editar
         </Link>
+
+        <ExcluirDespesaButton
+          despesaId={despesa.id}
+          emReembolso={emReembolso}
+          reembolsoPago={reembolsoPago}
+        />
       </div>
     </div>
   )

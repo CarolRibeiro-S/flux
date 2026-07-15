@@ -5,6 +5,7 @@ import { obterClienteAtivo } from '@/lib/clienteAtivo'
 import { formatarMoeda, formatarDataBR } from '@/lib/formatadores'
 import { obterStatusReembolso } from '@/lib/statusReembolso'
 import { GerenciarLote } from './GerenciarLote'
+import { GerarPdfButton } from './GerarPdfButton'
 
 type Despesa = {
   id: string
@@ -102,14 +103,7 @@ export default async function DetalheReembolsoPage({
               Baixar PDF
             </a>
           ) : (
-            <form action={`/api/reembolso/${lote.id}/pdf`} method="POST">
-              <button
-                type="submit"
-                className="w-full rounded-xl bg-[#6333ff] py-3 text-center font-semibold text-white"
-              >
-                Gerar PDF
-              </button>
-            </form>
+            <GerarPdfButton loteId={lote.id} />
           )}
         </div>
 

@@ -140,6 +140,30 @@ Responda APENAS com um JSON válido, sem nenhum texto adicional, sem markdown e 
       rawOcrText = textoResposta
     }
 
+    // Detecção de possível nota fiscal duplicada: mesmo cliente, mesmo CNPJ,
+    // mesmo valor e mesma data batendo exatamente. Só verifica quando os três
+    // campos foram extraídos com confiança (nenhum null) — comparar nulls
+    // contra nulls daria falso positivo entre despesas totalmente diferentes.
+    // Não bloqueia a criação: só sinaliza na resposta pro front-end avisar.
+    let duplicataId: string | null = null
+    if (
+      dadosExtraidos.cnpj_emitente &&
+      dadosExtraidos.amount != null &&
+      dadosExtraidos.expense_date
+    ) {
+      const { data: duplicataExistente } = await supabase
+        .from('expenses')
+        .select('id')
+        .eq('cliente_id', clienteAtivo.id)
+        .eq('cnpj_emitente', dadosExtraidos.cnpj_emitente)
+        .eq('amount', dadosExtraidos.amount)
+        .eq('expense_date', dadosExtraidos.expense_date)
+        .limit(1)
+        .maybeSingle()
+
+      duplicataId = duplicataExistente?.id ?? null
+    }
+
     const { data: despesaCriada, error: erroInsercao } = await supabase
       .from('expenses')
       .insert({
@@ -158,7 +182,11 @@ Responda APENAS com um JSON válido, sem nenhum texto adicional, sem markdown e 
       return NextResponse.json({ error: 'Não foi possível salvar a despesa' }, { status: 500 })
     }
 
-    return NextResponse.json({ id: despesaCriada.id })
+    return NextResponse.json({
+      id: despesaCriada.id,
+      possivel_duplicata: Boolean(duplicataId),
+      duplicata_id: duplicataId,
+    })
   } catch (error) {
     const erroAnthropic = error instanceof Anthropic.APIError ? error : null
 

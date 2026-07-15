@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont } from 'pdf-lib'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -546,11 +547,21 @@ export async function POST(
       return NextResponse.json({ error: 'Não foi possível salvar o PDF' }, { status: 500 })
     }
 
-    // Redireciona (303: POST -> GET) de volta pra tela do lote, que já sabe
-    // mostrar o botão "Baixar PDF" quando pdf_path estiver preenchido
-    return NextResponse.redirect(new URL(`/despesas/reembolso/${lote.id}`, request.url), {
-      status: 303,
-    })
+    // Marca as duas páginas que dependem de pdf_path para revalidação: a
+    // próxima visita busca os dados atualizados em vez de uma versão
+    // potencialmente desatualizada (isso não bloqueia nada agora, mas é a
+    // prática correta e documentada pelo Next depois de uma mutação feita
+    // fora de uma navegação — sem isso, um retorno via <Link>/router.push
+    // a essas telas poderia reaproveitar um payload já visitado).
+    revalidatePath(`/despesas/reembolso/${lote.id}`)
+    revalidatePath('/despesas/reembolso')
+
+    // Devolve JSON em vez de redirecionar: o botão "Gerar PDF" agora chama
+    // esta rota via fetch() (GerarPdfButton.tsx), não mais um <form> nativo,
+    // justamente para poder mostrar um estado de carregamento visível
+    // enquanto a geração (que embute fotos e pode levar alguns segundos)
+    // está em andamento — ver explicação completa sobre a causa raiz do bug.
+    return NextResponse.json({ ok: true, pdfPath: caminhoPdf })
   } catch (error) {
     console.error(`[/api/reembolso/${id}/pdf] Erro inesperado`, {
       message: error instanceof Error ? error.message : String(error),

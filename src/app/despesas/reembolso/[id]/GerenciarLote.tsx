@@ -33,6 +33,26 @@ async function lerCorpo(response: Response): Promise<{ error?: string } | null> 
   }
 }
 
+// Loga o erro completo no console (status HTTP, corpo bruto da resposta e o
+// contexto da ação) e devolve uma mensagem para mostrar na tela. Quando o
+// corpo não é um JSON com "error" (ex: a API devolveu uma página de erro
+// genérica), inclui o status HTTP na mensagem em vez de um texto opaco —
+// isso é o que faltava antes: um erro que falhava "silenciosamente" na
+// prática, porque a mensagem genérica não dizia nada sobre a causa real.
+function registrarEDescreverErro(
+  contexto: string,
+  response: Response,
+  corpo: { error?: string } | null,
+  mensagemPadrao: string
+): string {
+  console.error(`[GerenciarLote] ${contexto}`, {
+    status: response.status,
+    statusText: response.statusText,
+    corpo,
+  })
+  return corpo?.error ?? `${mensagemPadrao} (erro ${response.status})`
+}
+
 export function GerenciarLote({ loteId, status, despesas }: Props) {
   const router = useRouter()
   const [removendoId, setRemovendoId] = useState<string | null>(null)
@@ -64,11 +84,19 @@ export function GerenciarLote({ loteId, status, despesas }: Props) {
       const corpo = await lerCorpo(response)
 
       if (!response.ok) {
-        throw new Error(corpo?.error ?? 'Não foi possível remover a despesa.')
+        throw new Error(
+          registrarEDescreverErro(
+            `Falha ao remover despesa ${despesa.id} do lote ${loteId}`,
+            response,
+            corpo,
+            'Não foi possível remover a despesa'
+          )
+        )
       }
 
       router.refresh()
     } catch (error) {
+      console.error('[GerenciarLote] Erro ao remover despesa', { loteId, despesaId: despesa.id, error })
       setErro(error instanceof Error ? error.message : 'Erro ao remover despesa.')
     } finally {
       setRemovendoId(null)
@@ -88,11 +116,19 @@ export function GerenciarLote({ loteId, status, despesas }: Props) {
       const corpo = await lerCorpo(response)
 
       if (!response.ok) {
-        throw new Error(corpo?.error ?? 'Não foi possível atualizar o status.')
+        throw new Error(
+          registrarEDescreverErro(
+            `Falha ao atualizar status do lote ${loteId} para "${novoStatus}"`,
+            response,
+            corpo,
+            'Não foi possível atualizar o status'
+          )
+        )
       }
 
       router.refresh()
     } catch (error) {
+      console.error('[GerenciarLote] Erro ao atualizar status', { loteId, novoStatus, error })
       setErro(error instanceof Error ? error.message : 'Erro ao atualizar status.')
     } finally {
       setAtualizandoStatus(false)
@@ -113,12 +149,20 @@ export function GerenciarLote({ loteId, status, despesas }: Props) {
       const corpo = await lerCorpo(response)
 
       if (!response.ok) {
-        throw new Error(corpo?.error ?? 'Não foi possível excluir o reembolso.')
+        throw new Error(
+          registrarEDescreverErro(
+            `Falha ao excluir lote ${loteId}`,
+            response,
+            corpo,
+            'Não foi possível excluir o reembolso'
+          )
+        )
       }
 
       router.push('/despesas/reembolso')
       router.refresh()
     } catch (error) {
+      console.error('[GerenciarLote] Erro ao excluir reembolso', { loteId, error })
       setErro(error instanceof Error ? error.message : 'Erro ao excluir reembolso.')
       setExcluindo(false)
     }
