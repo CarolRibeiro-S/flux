@@ -7,6 +7,18 @@ import { obterClienteAtivo } from '@/lib/clienteAtivo'
 import { obterCategoria } from '@/lib/categorias'
 import { formatarMoeda, formatarDataBR } from '@/lib/formatadores'
 import { inferirMimeType } from '@/lib/imagemMime'
+import { buscarDespesasDoLote } from '@/lib/reembolsoDespesas'
+
+// Campos de expenses usados na montagem do PDF
+type DespesaPdf = {
+  id: string
+  merchant_name: string | null
+  cnpj_emitente: string | null
+  category: string | null
+  amount: number | null
+  expense_date: string | null
+  image_path: string | null
+}
 
 // Tamanho A4 em pontos
 const LARGURA_PAGINA = 595.28
@@ -100,16 +112,14 @@ export async function POST(
       return NextResponse.json({ error: 'Lote não encontrado' }, { status: 404 })
     }
 
-    // Reforço redundante: mesmo já sabendo que o lote é do cliente ativo,
-    // filtra as despesas também por cliente_id
-    const { data: despesas } = await supabase
-      .from('expenses')
-      .select('*')
-      .eq('batch_id', lote.id)
-      .eq('cliente_id', clienteAtivo.id)
-      .order('expense_date', { ascending: true })
-
-    const listaDespesas = despesas ?? []
+    // Despesas do lote vêm da tabela de junção reembolso_despesas, cruzadas
+    // com expenses já filtrado por cliente_id (ver @/lib/reembolsoDespesas).
+    const listaDespesas = await buscarDespesasDoLote<DespesaPdf>(
+      supabase,
+      lote.id,
+      clienteAtivo.id,
+      '*'
+    )
 
     const pdfDoc = await PDFDocument.create()
     const fonteNormal = await pdfDoc.embedFont(StandardFonts.Helvetica)

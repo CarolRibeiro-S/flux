@@ -5,9 +5,9 @@ import { obterClienteAtivoApi, ClienteAtivoInvalidoError } from '@/lib/clienteAt
 
 const STATUS_PERMITIDOS = ['aberto', 'enviado', 'pago'] as const
 
-// DELETE /api/reembolso/[id]: exclui o lote inteiro, devolvendo as despesas
-// vinculadas para o histórico/seleção (batch_id = null) antes de excluir a
-// linha do lote, e removendo o PDF gerado do Storage se existir.
+// DELETE /api/reembolso/[id]: exclui o lote inteiro e o PDF gerado, se houver.
+// Os vínculos em reembolso_despesas são removidos automaticamente pelo
+// ON DELETE CASCADE — as despesas em si nunca são afetadas.
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -70,20 +70,11 @@ export async function DELETE(
       )
     }
 
-    // Libera as despesas de volta para o histórico/seleção ANTES de excluir o
-    // lote — nunca deixa uma despesa presa a um batch_id que deixou de existir.
-    const { error: erroLiberar } = await supabase
-      .from('expenses')
-      .update({ batch_id: null })
-      .eq('batch_id', lote.id)
-      .eq('user_id', user.id)
-      .eq('cliente_id', clienteAtivo.id)
-
-    if (erroLiberar) {
-      console.error('[/api/reembolso/[id] DELETE] Erro ao liberar despesas do lote:', erroLiberar)
-      return NextResponse.json({ error: 'Não foi possível excluir o reembolso' }, { status: 500 })
-    }
-
+    // Não é preciso desvincular nada manualmente: reembolso_despesas tem
+    // ON DELETE CASCADE a partir de reimbursement_batches, então os vínculos
+    // deste lote somem junto com ele. As despesas em si (tabela expenses)
+    // nunca são tocadas — continuam no histórico e nos outros lotes em que
+    // porventura estejam.
     if (lote.pdf_path) {
       // Client admin: o bucket "reimbursements" já é manipulado via admin em
       // /api/reembolso/[id]/pdf (upload), a remoção segue o mesmo padrão.

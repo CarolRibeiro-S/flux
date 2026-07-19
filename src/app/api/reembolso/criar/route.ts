@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { obterClienteAtivoApi, ClienteAtivoInvalidoError } from '@/lib/clienteAtivo'
+import { vincularDespesasAoLote } from '@/lib/reembolsoDespesas'
 
 export async function POST(request: NextRequest) {
   const { expenseIds } = (await request.json()) as { expenseIds?: string[] }
@@ -95,20 +96,16 @@ export async function POST(request: NextRequest) {
 
     const idsEncontrados = despesas.map((despesa) => despesa.id)
 
-    const { error: erroAtualizacao } = await supabase
-      .from('expenses')
-      .update({ batch_id: lote.id })
-      .in('id', idsEncontrados)
-      .eq('user_id', user.id)
-      .eq('cliente_id', clienteAtivo.id)
+    // Vínculo agora é feito em reembolso_despesas (uma linha por despesa), e
+    // não mais escrevendo expenses.batch_id. Isso é o que permite a mesma
+    // despesa participar de vários lotes ao mesmo tempo.
+    const { erro: erroVinculo } = await vincularDespesasAoLote(supabase, lote.id, idsEncontrados)
 
-    if (erroAtualizacao) {
-      console.error(
-        '[/api/reembolso/criar] Erro ao vincular despesas ao lote, desfazendo criação:',
-        erroAtualizacao
-      )
+    if (erroVinculo) {
+      console.error('[/api/reembolso/criar] Erro ao vincular despesas ao lote, desfazendo criação')
       // Sem suporte a transação no client do supabase-js: desfaz o lote criado
       // manualmente para não deixar um lote órfão sem despesas vinculadas.
+      // Os vínculos porventura criados somem junto pelo ON DELETE CASCADE.
       await supabase.from('reimbursement_batches').delete().eq('id', lote.id)
       return NextResponse.json({ error: 'Não foi possível criar o reembolso' }, { status: 500 })
     }

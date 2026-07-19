@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { obterClienteAtivo } from '@/lib/clienteAtivo'
 import { formatarMoeda, formatarDataBR } from '@/lib/formatadores'
 import { obterStatusReembolso } from '@/lib/statusReembolso'
+import { buscarDespesasDoLote } from '@/lib/reembolsoDespesas'
 import { GerenciarLote } from './GerenciarLote'
 import { GerarPdfButton } from './GerarPdfButton'
 
@@ -47,16 +48,14 @@ export default async function DetalheReembolsoPage({
     notFound()
   }
 
-  // Reforço redundante: mesmo já sabendo que o lote é do cliente ativo,
-  // filtra as despesas também por cliente_id
-  const { data: despesas } = await supabase
-    .from('expenses')
-    .select('id, merchant_name, category, amount, expense_date')
-    .eq('batch_id', lote.id)
-    .eq('cliente_id', clienteAtivo.id)
-    .order('expense_date', { ascending: true })
-
-  const listaDespesas = (despesas ?? []) as Despesa[]
+  // Despesas do lote vêm da tabela de junção reembolso_despesas, cruzadas com
+  // expenses já filtrado por cliente_id (ver @/lib/reembolsoDespesas).
+  const listaDespesas = await buscarDespesasDoLote<Despesa>(
+    supabase,
+    lote.id,
+    clienteAtivo.id,
+    'id, merchant_name, category, amount, expense_date'
+  )
   const status = obterStatusReembolso(lote.status)
 
   let urlPdf: string | null = null

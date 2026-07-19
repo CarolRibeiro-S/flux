@@ -1,41 +1,18 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { obterClienteAtivoApi, ClienteAtivoInvalidoError } from '@/lib/clienteAtivo'
+import {
+  desvincularDespesaDoLote,
+  recalcularTotaisLote,
+  vincularDespesasAoLote,
+} from '@/lib/reembolsoDespesas'
 
-type SupabaseClient = Awaited<ReturnType<typeof createClient>>
+// Vínculo lote <-> despesa vive em reembolso_despesas (muitos-para-muitos):
+// as duas rotas abaixo criam/removem LINHAS DE VÍNCULO, nunca alteram a
+// despesa em si. Remover uma despesa de um lote não a tira dos outros lotes
+// nem do histórico.
 
-// Recalcula total_amount/period_start/period_end do lote a partir das
-// despesas que ainda restam vinculadas a ele. Se não sobrar nenhuma, o lote
-// fica com total zero e período nulo, mas continua existindo — decisão
-// explicada na resposta ao usuário (excluir automaticamente seria
-// destrutivo demais como efeito colateral de remover um único item).
-async function recalcularTotais(supabase: SupabaseClient, loteId: string, clienteId: string) {
-  const { data: despesasRestantes } = await supabase
-    .from('expenses')
-    .select('amount, expense_date')
-    .eq('batch_id', loteId)
-    .eq('cliente_id', clienteId)
-
-  const lista = despesasRestantes ?? []
-
-  const datas = lista
-    .map((despesa) => despesa.expense_date as string | null)
-    .filter((data): data is string => Boolean(data))
-    .sort()
-
-  const totalAmount = lista.reduce((soma, despesa) => soma + (despesa.amount ?? 0), 0)
-
-  await supabase
-    .from('reimbursement_batches')
-    .update({
-      total_amount: totalAmount,
-      period_start: datas[0] ?? null,
-      period_end: datas[datas.length - 1] ?? null,
-    })
-    .eq('id', loteId)
-}
-
-// DELETE: remove APENAS uma despesa do lote (não exclui o lote)
+// DELETE: remove APENAS o vínculo desta despesa com ESTE lote
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -89,34 +66,29 @@ export async function DELETE(
       )
     }
 
-    // Confirma que a despesa realmente pertence a este lote E ao cliente
-    // ativo antes de desvinculá-la — nunca confia só no id vindo do front-end.
+    // Confirma que a despesa é do cliente ativo. O vínculo em si é conferido
+    // pelo próprio DELETE (lote_id + despesa_id) — mas checar a despesa aqui
+    // garante que um id de outro cliente nunca chegue à tabela de junção.
     const { data: despesa, error: erroDespesa } = await supabase
       .from('expenses')
       .select('id')
       .eq('id', expenseId)
-      .eq('batch_id', loteId)
       .eq('user_id', user.id)
       .eq('cliente_id', clienteAtivo.id)
       .single()
 
     if (erroDespesa || !despesa) {
-      return NextResponse.json({ error: 'Despesa não encontrada neste lote' }, { status: 404 })
+      return NextResponse.json({ error: 'Despesa não encontrada' }, { status: 404 })
     }
 
-    const { error: erroRemocao } = await supabase
-      .from('expenses')
-      .update({ batch_id: null })
-      .eq('id', expenseId)
-      .eq('user_id', user.id)
-      .eq('cliente_id', clienteAtivo.id)
+    const { erro } = await desvincularDespesaDoLote(supabase, loteId, expenseId)
 
-    if (erroRemocao) {
-      console.error('[/api/reembolso/[id]/despesas DELETE] Erro ao remover despesa do lote:', erroRemocao)
+    if (erro) {
       return NextResponse.json({ error: 'Não foi possível remover a despesa' }, { status: 500 })
     }
 
-    await recalcularTotais(supabase, loteId, clienteAtivo.id)
+    // Recalcula com base nas despesas que restaram NESTE lote
+    await recalcularTotaisLote(supabase, loteId, clienteAtivo.id)
 
     return NextResponse.json({ ok: true })
   } catch (error) {
@@ -129,7 +101,7 @@ export async function DELETE(
   }
 }
 
-// POST: adiciona despesas extras a um lote já existente
+// POST: adiciona despesas a um lote já existente
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -182,17 +154,19 @@ export async function POST(
       )
     }
 
-    // Só aceita despesas do mesmo cliente ativo, marcadas como precisando de
-    // reembolso, e que ainda não têm batch_id — nunca confia só no filtro já
-    // aplicado na tela (reembolso/novo e reembolso/[id]/adicionar)
+    // Só aceita despesas do cliente ativo marcadas como precisando de
+    // reembolso. NÃO há mais checagem de "despesa ainda sem lote": qualquer
+    // despesa do cliente pode entrar em qualquer lote dele, mesmo já estando
+    // em outros (relação muitos-para-muitos).
+    const idsUnicos = [...new Set(expenseIds)]
+
     const { data: despesas, error: erroBusca } = await supabase
       .from('expenses')
       .select('id')
-      .in('id', expenseIds)
+      .in('id', idsUnicos)
       .eq('user_id', user.id)
       .eq('cliente_id', clienteAtivo.id)
       .eq('precisa_reembolso', true)
-      .is('batch_id', null)
 
     if (erroBusca || !despesas || despesas.length === 0) {
       return NextResponse.json({ error: 'Despesas não encontradas' }, { status: 404 })
@@ -200,11 +174,11 @@ export async function POST(
 
     // Trava de segurança redundante, mesmo padrão de /api/reembolso/criar: se
     // algum id sumiu da busca filtrada, é porque não pertence ao cliente ativo
-    // ou já está vinculado a outro lote — rejeita tudo em vez de seguir parcial.
-    if (despesas.length !== expenseIds.length) {
+    // — rejeita tudo em vez de seguir parcial.
+    if (despesas.length !== idsUnicos.length) {
       console.error(
         '[/api/reembolso/[id]/despesas POST] Uma ou mais despesas não podem ser adicionadas a este lote',
-        { expenseIds, encontradas: despesas.map((d) => d.id), clienteId: clienteAtivo.id }
+        { expenseIds: idsUnicos, encontradas: despesas.map((d) => d.id), clienteId: clienteAtivo.id }
       )
       return NextResponse.json(
         { error: 'Uma ou mais despesas selecionadas não podem ser adicionadas a este lote' },
@@ -214,19 +188,15 @@ export async function POST(
 
     const idsEncontrados = despesas.map((despesa) => despesa.id)
 
-    const { error: erroVinculo } = await supabase
-      .from('expenses')
-      .update({ batch_id: loteId })
-      .in('id', idsEncontrados)
-      .eq('user_id', user.id)
-      .eq('cliente_id', clienteAtivo.id)
+    // vincularDespesasAoLote ignora as que já estão neste lote, então
+    // reenviar uma despesa já incluída é um no-op e não duplica o total.
+    const { erro: erroVinculo } = await vincularDespesasAoLote(supabase, loteId, idsEncontrados)
 
     if (erroVinculo) {
-      console.error('[/api/reembolso/[id]/despesas POST] Erro ao adicionar despesas ao lote:', erroVinculo)
       return NextResponse.json({ error: 'Não foi possível adicionar as despesas' }, { status: 500 })
     }
 
-    await recalcularTotais(supabase, loteId, clienteAtivo.id)
+    await recalcularTotaisLote(supabase, loteId, clienteAtivo.id)
 
     return NextResponse.json({ ok: true })
   } catch (error) {

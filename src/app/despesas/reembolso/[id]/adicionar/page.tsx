@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { obterClienteAtivo } from '@/lib/clienteAtivo'
+import { buscarIdsDespesasDoLote, contarLotesPorDespesa } from '@/lib/reembolsoDespesas'
 import { SeletorDespesas } from '../../novo/SeletorDespesas'
 
 export default async function AdicionarDespesasPage({
@@ -40,8 +41,9 @@ export default async function AdicionarDespesasPage({
     redirect(`/despesas/reembolso/${id}`)
   }
 
-  // Mesma query de novo/page.tsx: despesas confirmadas do cliente ativo,
-  // marcadas como precisando de reembolso, que ainda não entraram em nenhum lote
+  // Mesma query de novo/page.tsx: despesas confirmadas do cliente ativo
+  // marcadas como precisando de reembolso, SEM filtrar por vínculo com lote —
+  // uma despesa já incluída em outros reembolsos continua disponível.
   const { data: despesas } = await supabase
     .from('expenses')
     .select('id, merchant_name, category, amount, expense_date')
@@ -49,8 +51,20 @@ export default async function AdicionarDespesasPage({
     .eq('cliente_id', clienteAtivo.id)
     .eq('status', 'confirmado')
     .eq('precisa_reembolso', true)
-    .is('batch_id', null)
     .order('expense_date', { ascending: false })
+
+  const listaDespesas = despesas ?? []
+
+  const contagemLotes = await contarLotesPorDespesa(
+    supabase,
+    listaDespesas.map((despesa) => despesa.id),
+    clienteAtivo.id,
+    user.id
+  )
+
+  // Quais já estão NESTE lote: continuam selecionáveis, mas marcá-las de novo
+  // seria um no-op silencioso — o indicador deixa isso explícito.
+  const idsNesteLote = await buscarIdsDespesasDoLote(supabase, id)
 
   return (
     <div className="min-h-screen bg-[#080810] px-4 py-6 text-white">
@@ -64,7 +78,12 @@ export default async function AdicionarDespesasPage({
 
         <h1 className="text-2xl font-semibold">Adicionar despesas</h1>
 
-        <SeletorDespesas despesas={despesas ?? []} loteId={id} />
+        <SeletorDespesas
+          despesas={listaDespesas}
+          loteId={id}
+          contagemLotes={contagemLotes}
+          idsNesteLote={idsNesteLote}
+        />
       </div>
     </div>
   )

@@ -19,9 +19,20 @@ type Props = {
   // /api/reembolso/criar). Com loteId: adiciona as despesas selecionadas a
   // um lote já existente (POST /api/reembolso/[id]/despesas).
   loteId?: string
+  // Quantos reembolsos já incluem cada despesa (id -> quantidade). Só
+  // informativo: nenhuma despesa fica bloqueada por já estar em outro lote.
+  contagemLotes?: Record<string, number>
+  // Ids já vinculados a ESTE lote (só no fluxo de adicionar)
+  idsNesteLote?: string[]
 }
 
-export function SeletorDespesas({ despesas, loteId }: Props) {
+export function SeletorDespesas({
+  despesas,
+  loteId,
+  contagemLotes = {},
+  idsNesteLote = [],
+}: Props) {
+  const conjuntoNesteLote = useMemo(() => new Set(idsNesteLote), [idsNesteLote])
   const router = useRouter()
 
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set())
@@ -150,6 +161,8 @@ export function SeletorDespesas({ despesas, loteId }: Props) {
           {despesas.map((despesa) => {
             const categoria = obterCategoria(despesa.category)
             const marcada = selecionadas.has(despesa.id)
+            const quantidadeLotes = contagemLotes[despesa.id] ?? 0
+            const jaNesteLote = conjuntoNesteLote.has(despesa.id)
 
             return (
               <label
@@ -170,11 +183,24 @@ export function SeletorDespesas({ despesas, loteId }: Props) {
                   {categoria.icone}
                 </span>
 
-                <span className="flex-1">
-                  <p className="font-medium">{despesa.merchant_name ?? 'Sem nome'}</p>
+                <span className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{despesa.merchant_name ?? 'Sem nome'}</p>
                   <p className="text-xs" style={{ color: categoria.cor }}>
                     {categoria.rotulo}
                   </p>
+                  {/* Indicadores discretos: nenhum deles impede a seleção */}
+                  {jaNesteLote ? (
+                    <span className="mt-0.5 inline-block rounded-full bg-[#00c8c8]/15 px-2 py-0.5 text-[10px] font-semibold text-[#00c8c8]">
+                      Já neste reembolso
+                    </span>
+                  ) : (
+                    quantidadeLotes > 0 && (
+                      <span className="mt-0.5 inline-block rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/50">
+                        Já incluída em {quantidadeLotes} reembolso
+                        {quantidadeLotes === 1 ? '' : 's'}
+                      </span>
+                    )
+                  )}
                 </span>
 
                 <span className="text-right">

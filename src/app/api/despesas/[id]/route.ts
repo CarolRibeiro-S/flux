@@ -2,49 +2,19 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { obterClienteAtivoApi, ClienteAtivoInvalidoError } from '@/lib/clienteAtivo'
-
-type SupabaseClient = Awaited<ReturnType<typeof createClient>>
-
-// Recalcula total_amount/period_start/period_end de um lote a partir das
-// despesas que ainda restam vinculadas a ele. Mesma lógica de
-// /api/reembolso/[id]/despesas — quando uma despesa é excluída direto do
-// histórico, o lote a que ela pertencia precisa refletir o novo total.
-async function recalcularTotaisLote(
-  supabase: SupabaseClient,
-  loteId: string,
-  clienteId: string
-) {
-  const { data: despesasRestantes } = await supabase
-    .from('expenses')
-    .select('amount, expense_date')
-    .eq('batch_id', loteId)
-    .eq('cliente_id', clienteId)
-
-  const lista = despesasRestantes ?? []
-
-  const datas = lista
-    .map((despesa) => despesa.expense_date as string | null)
-    .filter((data): data is string => Boolean(data))
-    .sort()
-
-  const totalAmount = lista.reduce((soma, despesa) => soma + (despesa.amount ?? 0), 0)
-
-  await supabase
-    .from('reimbursement_batches')
-    .update({
-      total_amount: totalAmount,
-      period_start: datas[0] ?? null,
-      period_end: datas[datas.length - 1] ?? null,
-    })
-    .eq('id', loteId)
-    .eq('cliente_id', clienteId)
-}
+import {
+  buscarLotesDaDespesa,
+  desvincularDespesaDeTodosOsLotes,
+  recalcularTotaisLote,
+} from '@/lib/reembolsoDespesas'
 
 // DELETE /api/despesas/[id]: exclui uma despesa (linha + imagem no Storage),
 // reaproveitando a lógica que já existia em FormularioRevisao.tsx, mas agora
 // acessível direto do histórico/detalhe, sem precisar entrar na edição.
-// Se a despesa estiver vinculada a um lote de reembolso (batch_id), o total
-// desse lote é recalculado após a exclusão.
+//
+// Como a relação com lotes virou muitos-para-muitos, a despesa pode estar em
+// VÁRIOS reembolsos ao mesmo tempo — todos precisam ser recalculados depois
+// da exclusão, não apenas um.
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -76,7 +46,7 @@ export async function DELETE(
     // Uma despesa de outro cliente nunca é encontrada aqui.
     const { data: despesa, error: erroDespesa } = await supabase
       .from('expenses')
-      .select('id, image_path, batch_id')
+      .select('id, image_path')
       .eq('id', id)
       .eq('user_id', user.id)
       .eq('cliente_id', clienteAtivo.id)
@@ -92,26 +62,27 @@ export async function DELETE(
       return NextResponse.json({ error: 'Despesa não encontrada' }, { status: 404 })
     }
 
-    // Se a despesa pertence a um lote já pago, excluí-la alteraria um
-    // reembolso tratado como finalizado (mesma regra do DELETE/PATCH de lote e
-    // da remoção de despesa de lote). Bloqueia com mensagem clara.
-    if (despesa.batch_id) {
-      const { data: lote } = await supabase
-        .from('reimbursement_batches')
-        .select('status')
-        .eq('id', despesa.batch_id)
-        .eq('cliente_id', clienteAtivo.id)
-        .single()
+    // Levanta TODOS os lotes que contêm esta despesa ANTES de excluí-la —
+    // depois da exclusão os vínculos já não existem para serem consultados.
+    const lotesRelacionados = await buscarLotesDaDespesa(
+      supabase,
+      despesa.id,
+      clienteAtivo.id,
+      user.id
+    )
 
-      if (lote?.status === 'pago') {
-        return NextResponse.json(
-          {
-            error:
-              'Esta despesa faz parte de um reembolso já pago e não pode ser excluída.',
-          },
-          { status: 409 }
-        )
-      }
+    // Basta UM lote pago para bloquear: excluir a despesa alteraria o total de
+    // um reembolso tratado como finalizado (mesma regra do DELETE/PATCH de
+    // lote e da remoção de despesa de lote).
+    const lotePago = lotesRelacionados.find((lote) => lote.status === 'pago')
+    if (lotePago) {
+      return NextResponse.json(
+        {
+          error:
+            'Esta despesa faz parte de um reembolso já pago e não pode ser excluída.',
+        },
+        { status: 409 }
+      )
     }
 
     // Remove a imagem do Storage antes da linha. Não bloqueia a exclusão da
@@ -127,6 +98,11 @@ export async function DELETE(
       }
     }
 
+    // Remove os vínculos antes da despesa, para não depender de um
+    // ON DELETE CASCADE a partir de expenses (o cascade garantido é o de
+    // reimbursement_batches). Se ele existir, isto é apenas um no-op.
+    await desvincularDespesaDeTodosOsLotes(supabase, despesa.id)
+
     const { error: erroExclusao } = await supabase
       .from('expenses')
       .delete()
@@ -139,10 +115,14 @@ export async function DELETE(
       return NextResponse.json({ error: 'Não foi possível excluir a despesa' }, { status: 500 })
     }
 
-    // Recalcula o total do lote só depois de a despesa já ter saído dele
-    if (despesa.batch_id) {
-      await recalcularTotaisLote(supabase, despesa.batch_id, clienteAtivo.id)
-      revalidatePath(`/despesas/reembolso/${despesa.batch_id}`)
+    // Recalcula TODOS os lotes que continham a despesa — não apenas um, já que
+    // a relação é muitos-para-muitos.
+    for (const lote of lotesRelacionados) {
+      await recalcularTotaisLote(supabase, lote.id, clienteAtivo.id)
+      revalidatePath(`/despesas/reembolso/${lote.id}`)
+    }
+
+    if (lotesRelacionados.length > 0) {
       revalidatePath('/despesas/reembolso')
     }
 

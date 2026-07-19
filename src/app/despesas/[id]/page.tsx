@@ -5,6 +5,8 @@ import { obterClienteAtivo } from '@/lib/clienteAtivo'
 import { obterCategoria } from '@/lib/categorias'
 import { formatarMoeda, formatarDataBR } from '@/lib/formatadores'
 import { obterTipoComprovante } from '@/lib/tiposComprovante'
+import { obterStatusReembolso } from '@/lib/statusReembolso'
+import { buscarLotesDaDespesa } from '@/lib/reembolsoDespesas'
 import { ExcluirDespesaButton } from './ExcluirDespesaButton'
 
 const ROTULOS_STATUS: Record<string, string> = {
@@ -48,24 +50,18 @@ export default async function DetalheDespesaPage({
     .from('receipts')
     .createSignedUrl(despesa.image_path, 300)
 
-  // Se a despesa está vinculada a um lote, busca o status para saber se a
-  // exclusão deve avisar sobre a remoção do reembolso (lote editável) ou ser
-  // bloqueada (lote já pago). Re-filtra por cliente_id por segurança.
-  let emReembolso = false
-  let reembolsoPago = false
-  if (despesa.batch_id) {
-    const { data: lote } = await supabase
-      .from('reimbursement_batches')
-      .select('status')
-      .eq('id', despesa.batch_id)
-      .eq('cliente_id', clienteAtivo.id)
-      .single()
+  // A mesma despesa pode estar em VÁRIOS reembolsos ao mesmo tempo, então
+  // buscamos todos (via reembolso_despesas, já filtrado por cliente_id).
+  // Um único lote pago basta para bloquear a exclusão.
+  const lotesRelacionados = await buscarLotesDaDespesa(
+    supabase,
+    despesa.id,
+    clienteAtivo.id,
+    user.id
+  )
 
-    if (lote) {
-      emReembolso = true
-      reembolsoPago = lote.status === 'pago'
-    }
-  }
+  const emReembolso = lotesRelacionados.length > 0
+  const reembolsoPago = lotesRelacionados.some((lote) => lote.status === 'pago')
 
   const categoria = obterCategoria(despesa.category)
   // Etiqueta discreta, só informativa: nota fiscal ou comprovante PIX
@@ -135,6 +131,41 @@ export default async function DetalheDespesaPage({
             )}
           </div>
         </div>
+
+        {/* Uma despesa pode estar em mais de um reembolso — lista todos */}
+        {lotesRelacionados.length > 0 && (
+          <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 p-5">
+            <span className="text-sm text-white/50">
+              {lotesRelacionados.length === 1
+                ? 'Incluída em 1 reembolso'
+                : `Incluída em ${lotesRelacionados.length} reembolsos`}
+            </span>
+
+            <div className="flex flex-col gap-2">
+              {lotesRelacionados.map((lote) => {
+                const status = obterStatusReembolso(lote.status)
+                return (
+                  <Link
+                    key={lote.id}
+                    href={`/despesas/reembolso/${lote.id}`}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-white/10 px-3 py-2.5 transition-colors hover:bg-white/5"
+                  >
+                    <span className="truncate text-sm">
+                      {lote.period_start ? formatarDataBR(lote.period_start) : '—'} –{' '}
+                      {lote.period_end ? formatarDataBR(lote.period_end) : '—'}
+                    </span>
+                    <span
+                      className="shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+                      style={{ backgroundColor: `${status.cor}33`, color: status.cor }}
+                    >
+                      {status.rotulo}
+                    </span>
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {despesa.observacoes && (
           <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 p-5">
