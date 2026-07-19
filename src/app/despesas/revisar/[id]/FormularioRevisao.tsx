@@ -6,17 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { lerClienteAtivoIdCookie } from '@/lib/clienteAtivoCookie'
 import { formatarMoeda, formatarDataBR } from '@/lib/formatadores'
 import { obterTipoComprovante } from '@/lib/tiposComprovante'
-
-// Sugestões rápidas exibidas no datalist — a categoria continua sendo texto livre
-const SUGESTOES_CATEGORIA = [
-  'Alimentação',
-  'Transporte',
-  'Hospedagem',
-  'Material',
-  'Farmácia',
-  'Estacionamento',
-  'Outros',
-]
+import { SUGESTOES_CATEGORIA } from '@/lib/categorias'
 
 type Despesa = {
   id: string
@@ -117,7 +107,11 @@ export function FormularioRevisao({
 
     setCarregando('descartar')
 
-    await supabase.storage.from('receipts').remove([despesa.image_path])
+    // Despesa manual não tem comprovante no Storage (image_path vazio) — só
+    // tenta remover o arquivo quando há um caminho de fato.
+    if (despesa.image_path) {
+      await supabase.storage.from('receipts').remove([despesa.image_path])
+    }
 
     const { error } = await supabase
       .from('expenses')

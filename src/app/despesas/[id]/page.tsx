@@ -46,9 +46,14 @@ export default async function DetalheDespesaPage({
     notFound()
   }
 
-  const { data: urlAssinada } = await supabase.storage
-    .from('receipts')
-    .createSignedUrl(despesa.image_path, 300)
+  // Despesa manual não tem comprovante (image_path vazio). Só pede a signed
+  // URL quando há caminho — createSignedUrl('') faria uma requisição inútil e
+  // erraria. O placeholder "Sem comprovante anexado" é exibido no lugar.
+  const urlPreview = despesa.image_path
+    ? (
+        await supabase.storage.from('receipts').createSignedUrl(despesa.image_path, 300)
+      ).data?.signedUrl ?? null
+    : null
 
   // A mesma despesa pode estar em VÁRIOS reembolsos ao mesmo tempo, então
   // buscamos todos (via reembolso_despesas, já filtrado por cliente_id).
@@ -74,12 +79,12 @@ export default async function DetalheDespesaPage({
           ← Histórico
         </Link>
 
-        {urlAssinada?.signedUrl && (
+        {urlPreview ? (
           <div className="flex flex-col gap-2">
             <div className="overflow-hidden rounded-2xl border border-white/10">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={urlAssinada.signedUrl}
+                src={urlPreview}
                 alt="Foto do comprovante da despesa"
                 className="w-full object-cover"
               />
@@ -93,6 +98,12 @@ export default async function DetalheDespesaPage({
                 {tipoComprovante.icone} {tipoComprovante.rotulo}
               </span>
             )}
+          </div>
+        ) : (
+          // Despesa sem comprovante (cadastro manual): placeholder discreto no
+          // lugar da foto, nunca uma imagem quebrada.
+          <div className="flex items-center justify-center rounded-2xl border border-dashed border-white/15 bg-white/5 px-4 py-8 text-sm text-white/40">
+            Sem comprovante anexado
           </div>
         )}
 

@@ -38,14 +38,21 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Usada pelo input type="file" com capture="environment" (botão
-         "Tirar foto"). Sem essa declaração explícita o app depende só da
-         delegação ao app de câmera do sistema, o que pode falhar em
-         fabricantes/versões de Android mais restritivos. -->
-    <uses-permission android:name="android.permission.CAMERA" />
 
-    <!-- required="false": o app também aceita seleção de imagem via galeria
-         (input sem capture), então não deve ficar indisponível na Play Store
-         para aparelhos sem câmera física (ex: alguns tablets). -->
+    <!-- NÃO declarar android.permission.CAMERA aqui.
+         Este app é uma WebView que só carrega a URL da Vercel e usa
+         <input type="file"> puro (não o plugin de câmera do Capacitor).
+         Quando CAMERA está declarada no manifest, o BridgeWebChromeClient do
+         Capacitor passa a tratar o input pela rota de "captura de mídia", que
+         exige a permissão concedida em runtime — e como não há código nativo
+         pedindo essa permissão, o seletor de arquivos simplesmente NÃO ABRE
+         (foi o que quebrou o botão "Escolher da galeria").
+         Sem a permissão: a galeria abre normalmente, e o "Tirar foto"
+         (capture="environment") continua funcionando por delegação ao app de
+         câmera do sistema, que tem a permissão própria dele. -->
+
+    <!-- Câmera é opcional (a usuária pode escolher da galeria em vez de
+         fotografar), então o app não deve sumir da Play Store para aparelhos
+         sem câmera física (ex: alguns tablets). -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 </manifest>

@@ -1,3 +1,16 @@
+// Sugestões rápidas exibidas nos datalists de categoria (revisão e cadastro
+// manual). A categoria continua sendo TEXTO LIVRE — isto é só um atalho, não
+// uma lista fechada. Fica aqui para os dois formulários nunca divergirem.
+export const SUGESTOES_CATEGORIA = [
+  'Alimentação',
+  'Transporte',
+  'Hospedagem',
+  'Material',
+  'Farmácia',
+  'Estacionamento',
+  'Outros',
+]
+
 // Categoria agora é texto livre (sugerido pela IA ou digitado pelo usuário), sem lista
 // fixa. Aqui mapeamos palavras-chave comuns para um ícone/cor consistentes; qualquer
 // categoria que não bata com nenhuma palavra-chave cai no visual genérico/neutro.

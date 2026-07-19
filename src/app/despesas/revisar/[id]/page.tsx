@@ -37,9 +37,13 @@ export default async function RevisarDespesaPage({
     notFound()
   }
 
-  const { data: urlAssinada } = await supabase.storage
-    .from('receipts')
-    .createSignedUrl(despesa.image_path, 300)
+  // Despesa manual não tem comprovante (image_path vazio) — não pede signed
+  // URL nesse caso, senão createSignedUrl('') faria uma requisição inútil.
+  const urlPreview = despesa.image_path
+    ? (
+        await supabase.storage.from('receipts').createSignedUrl(despesa.image_path, 300)
+      ).data?.signedUrl ?? null
+    : null
 
   // Despesa parecida sinalizada por /api/extract (possivel_duplicata) — busca
   // só um resumo pra exibir no aviso, sempre re-filtrando por user_id e
@@ -68,11 +72,11 @@ export default async function RevisarDespesaPage({
       <div className="mx-auto flex w-full max-w-md flex-col gap-6">
         <h1 className="text-2xl font-semibold">Revisar despesa</h1>
 
-        {urlAssinada?.signedUrl && (
+        {urlPreview && (
           <div className="overflow-hidden rounded-2xl border border-white/10">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={urlAssinada.signedUrl}
+              src={urlPreview}
               alt="Foto do comprovante da despesa"
               className="w-full object-cover"
             />

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Camera, Images } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { uploadReceiptImage } from '@/lib/supabase/upload'
@@ -181,6 +182,16 @@ export function CapturaDespesa({ clienteNome }: { clienteNome: string }) {
               <Images className="h-9 w-9" strokeWidth={1.6} aria-hidden="true" />
               <span className="text-base font-semibold">Escolher da galeria</span>
             </button>
+
+            {/* Opção secundária: cadastrar a despesa digitando os dados, sem
+                nenhuma foto. Estilo discreto (só texto) para não competir com
+                as duas ações principais acima. */}
+            <Link
+              href="/despesa-manual"
+              className="mt-1 text-center text-sm text-white/50 underline-offset-4 transition-colors hover:text-white/80 hover:underline"
+            >
+              Adicionar sem foto
+            </Link>
           </div>
         ) : (
           <div className="flex w-full max-w-xs flex-col items-center gap-4">
