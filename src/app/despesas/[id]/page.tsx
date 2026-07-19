@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { obterClienteAtivo } from '@/lib/clienteAtivo'
 import { obterCategoria } from '@/lib/categorias'
 import { formatarMoeda, formatarDataBR } from '@/lib/formatadores'
+import { obterTipoComprovante } from '@/lib/tiposComprovante'
 import { ExcluirDespesaButton } from './ExcluirDespesaButton'
 
 const ROTULOS_STATUS: Record<string, string> = {
@@ -67,6 +68,8 @@ export default async function DetalheDespesaPage({
   }
 
   const categoria = obterCategoria(despesa.category)
+  // Etiqueta discreta, só informativa: nota fiscal ou comprovante PIX
+  const tipoComprovante = obterTipoComprovante(despesa.tipo_comprovante)
 
   return (
     <div className="min-h-screen bg-[#080810] px-4 py-6 text-white">
@@ -76,13 +79,24 @@ export default async function DetalheDespesaPage({
         </Link>
 
         {urlAssinada?.signedUrl && (
-          <div className="overflow-hidden rounded-2xl border border-white/10">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={urlAssinada.signedUrl}
-              alt="Foto da nota fiscal"
-              className="w-full object-cover"
-            />
+          <div className="flex flex-col gap-2">
+            <div className="overflow-hidden rounded-2xl border border-white/10">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={urlAssinada.signedUrl}
+                alt="Foto do comprovante da despesa"
+                className="w-full object-cover"
+              />
+            </div>
+
+            {tipoComprovante && (
+              <span
+                className="inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
+                style={{ backgroundColor: `${tipoComprovante.cor}33`, color: tipoComprovante.cor }}
+              >
+                {tipoComprovante.icone} {tipoComprovante.rotulo}
+              </span>
+            )}
           </div>
         )}
 

@@ -73,7 +73,7 @@ export default async function RevisarDespesaPage({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={urlAssinada.signedUrl}
-              alt="Foto da nota fiscal"
+              alt="Foto do comprovante da despesa"
               className="w-full object-cover"
             />
           </div>

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { lerClienteAtivoIdCookie } from '@/lib/clienteAtivoCookie'
 import { formatarMoeda, formatarDataBR } from '@/lib/formatadores'
+import { obterTipoComprovante } from '@/lib/tiposComprovante'
 
 // Sugestões rápidas exibidas no datalist — a categoria continua sendo texto livre
 const SUGESTOES_CATEGORIA = [
@@ -26,6 +27,7 @@ type Despesa = {
   category: string | null
   observacoes: string | null
   precisa_reembolso: boolean | null
+  tipo_comprovante: string | null
   image_path: string
 }
 
@@ -60,6 +62,11 @@ export function FormularioRevisao({
   const [precisaReembolso, setPrecisaReembolso] = useState(despesa.precisa_reembolso ?? true)
   const [carregando, setCarregando] = useState<'confirmar' | 'descartar' | null>(null)
   const [erro, setErro] = useState<string | null>(null)
+
+  // Só informativo: mostra o que a extração identificou (nota fiscal ou
+  // comprovante PIX). Não altera nenhum campo do formulário — os campos são
+  // os mesmos para os dois tipos.
+  const tipoComprovante = obterTipoComprovante(despesa.tipo_comprovante)
 
   async function handleConfirmar() {
     setErro(null)
@@ -132,6 +139,15 @@ export function FormularioRevisao({
 
   return (
     <div className="flex flex-col gap-4">
+      {tipoComprovante && (
+        <span
+          className="inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
+          style={{ backgroundColor: `${tipoComprovante.cor}33`, color: tipoComprovante.cor }}
+        >
+          {tipoComprovante.icone} {tipoComprovante.rotulo}
+        </span>
+      )}
+
       {avisoDuplicataVisivel && despesaDuplicada && (
         <div className="flex flex-col gap-3 rounded-xl border border-orange-400/40 bg-orange-400/10 p-4">
           <p className="text-sm text-orange-300">

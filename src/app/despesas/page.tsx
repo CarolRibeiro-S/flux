@@ -1,33 +1,28 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { Download, Wallet } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { obterClienteAtivo } from '@/lib/clienteAtivo'
-import { obterCategoria } from '@/lib/categorias'
-import { formatarMoeda, formatarDataBR } from '@/lib/formatadores'
+import { formatarMoeda } from '@/lib/formatadores'
+import {
+  aplicarFiltrosDespesas,
+  filtrosParaQueryString,
+  lerFiltros,
+  temFiltroAtivo,
+  temFiltroDeData,
+} from '@/lib/filtrosDespesas'
+import { prefixoMesCorrente, rotuloMes } from '@/lib/meses'
 import { CabecalhoCliente } from '@/components/CabecalhoCliente'
+import { FiltrosHistorico } from './FiltrosHistorico'
+import { ResumoCategoria, type TotalCategoria } from './ResumoCategoria'
+import { ListaDespesas, type DespesaLista, type GrupoMes } from './ListaDespesas'
 
-const NOMES_MESES = [
-  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
-]
-
-type Despesa = {
-  id: string
-  merchant_name: string | null
-  amount: number | null
-  expense_date: string | null
-  category: string | null
-  observacoes: string | null
-  precisa_reembolso: boolean | null
-}
-
-type Grupo = {
-  rotulo: string
-  total: number
-  despesas: Despesa[]
-}
-
-export default async function DespesasPage() {
+export default async function DespesasPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; de?: string; ate?: string; categoria?: string }>
+}) {
+  const filtros = lerFiltros(await searchParams)
   const supabase = await createClient()
 
   const {
@@ -42,21 +37,45 @@ export default async function DespesasPage() {
   // cliente_id do cliente ativo, nunca só por user_id.
   const clienteAtivo = await obterClienteAtivo()
 
-  const { data: despesas } = await supabase
+  // Lista principal: filtro triplo (user_id + cliente_id + status) aplicado
+  // ANTES dos filtros de tela, que nunca podem afrouxar esse isolamento.
+  const consultaBase = supabase
     .from('expenses')
     .select('id, merchant_name, amount, expense_date, category, observacoes, precisa_reembolso')
     .eq('user_id', user.id)
     .eq('cliente_id', clienteAtivo.id)
     .eq('status', 'confirmado')
-    .order('expense_date', { ascending: false })
 
-  const listaDespesas = (despesas ?? []) as Despesa[]
+  const { data: despesas } = await aplicarFiltrosDespesas(consultaBase, filtros).order(
+    'expense_date',
+    { ascending: false }
+  )
+
+  const listaDespesas = (despesas ?? []) as DespesaLista[]
+
+  // Categorias oferecidas nos filtros e na edição em massa: extraídas das
+  // despesas do próprio cliente, SEM aplicar os filtros de tela — senão
+  // filtrar por uma categoria esconderia todas as outras do seletor.
+  const { data: despesasParaCategorias } = await supabase
+    .from('expenses')
+    .select('category')
+    .eq('user_id', user.id)
+    .eq('cliente_id', clienteAtivo.id)
+    .eq('status', 'confirmado')
+
+  const categorias = [
+    ...new Set(
+      (despesasParaCategorias ?? [])
+        .map((despesa) => (despesa.category ?? '').trim())
+        .filter(Boolean)
+    ),
+  ].sort((a, b) => a.localeCompare(b, 'pt-BR'))
 
   const totalGeral = listaDespesas.reduce((soma, despesa) => soma + (despesa.amount ?? 0), 0)
 
-  // Agrupamento por mês feito aqui em memória, depois de buscar todas as
-  // despesas confirmadas do usuário — não é uma query SQL com GROUP BY.
-  const grupos = new Map<string, Grupo>()
+  // Agrupamento por mês feito aqui em memória, depois de buscar as despesas
+  // já filtradas — não é uma query SQL com GROUP BY.
+  const grupos = new Map<string, GrupoMes>()
 
   for (const despesa of listaDespesas) {
     if (!despesa.expense_date) continue
@@ -65,11 +84,7 @@ export default async function DespesasPage() {
     const chave = `${ano}-${mes}`
 
     if (!grupos.has(chave)) {
-      grupos.set(chave, {
-        rotulo: `${NOMES_MESES[Number(mes) - 1]} ${ano}`,
-        total: 0,
-        despesas: [],
-      })
+      grupos.set(chave, { chave, rotulo: rotuloMes(chave), total: 0, despesas: [] })
     }
 
     const grupo = grupos.get(chave)!
@@ -77,13 +92,48 @@ export default async function DespesasPage() {
     grupo.despesas.push(despesa)
   }
 
+  // Resumo por categoria: usa o período filtrado quando há filtro de data;
+  // sem filtro de data, recorta o mês corrente para não somar o histórico
+  // inteiro (que não é um "resumo" útil).
+  const mesCorrente = prefixoMesCorrente()
+  const filtrandoPorData = temFiltroDeData(filtros)
+  const despesasResumo = filtrandoPorData
+    ? listaDespesas
+    : listaDespesas.filter((despesa) => despesa.expense_date?.startsWith(mesCorrente))
+
+  const totaisPorCategoria = new Map<string, number>()
+  for (const despesa of despesasResumo) {
+    const categoria = (despesa.category ?? '').trim() || 'Outros'
+    totaisPorCategoria.set(
+      categoria,
+      (totaisPorCategoria.get(categoria) ?? 0) + (despesa.amount ?? 0)
+    )
+  }
+
+  const totais: TotalCategoria[] = [...totaisPorCategoria.entries()]
+    .map(([categoria, total]) => ({ categoria, total }))
+    .sort((a, b) => b.total - a.total)
+
+  const rotuloPeriodoResumo = filtrandoPorData ? 'período filtrado' : rotuloMes(mesCorrente)
+
+  const queryStringFiltros = filtrosParaQueryString(filtros)
+  const urlExportar = queryStringFiltros
+    ? `/api/despesas/exportar?${queryStringFiltros}`
+    : '/api/despesas/exportar'
+
   return (
     <div className="min-h-screen bg-[#080810] px-4 py-6 text-white">
       <div className="mx-auto flex w-full max-w-md flex-col gap-6">
         <CabecalhoCliente nome={clienteAtivo.nome} />
 
-        {/* Link "← Início" removido: já coberto pelo item "Início" do menu inferior */}
-        <header className="flex items-center justify-end">
+        <header className="flex items-center justify-between gap-2">
+          <Link
+            href="/orcamento"
+            className="flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold text-white/80"
+          >
+            <Wallet className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+            Orçamento
+          </Link>
           <Link
             href="/"
             className="rounded-lg bg-[#6333ff] px-4 py-2 text-sm font-semibold text-white"
@@ -98,79 +148,33 @@ export default async function DespesasPage() {
           <p className="text-sm text-white/50">
             {listaDespesas.length} despesa{listaDespesas.length === 1 ? '' : 's'} confirmada
             {listaDespesas.length === 1 ? '' : 's'}
+            {temFiltroAtivo(filtros) && ' com os filtros aplicados'}
           </p>
         </div>
 
-        {listaDespesas.length === 0 && (
-          <p className="text-sm text-white/50">Nenhuma despesa confirmada ainda.</p>
+        <FiltrosHistorico filtros={filtros} categorias={categorias} />
+
+        {listaDespesas.length > 0 && (
+          <a
+            href={urlExportar}
+            className="flex items-center justify-center gap-2 rounded-xl border border-[#00c8c8]/40 bg-[#00c8c8]/10 py-3 text-sm font-semibold text-[#00c8c8]"
+          >
+            <Download className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+            Exportar CSV
+          </a>
         )}
 
-        {[...grupos.entries()].map(([chave, grupo]) => (
-          <section key={chave} className="flex flex-col gap-2">
-            <div className="flex items-center justify-between border-b border-white/10 pb-2">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-white/60">
-                {grupo.rotulo}
-              </h2>
-              <span className="text-sm font-semibold text-white/80">
-                {formatarMoeda(grupo.total)}
-              </span>
-            </div>
+        <ResumoCategoria totais={totais} rotuloPeriodo={rotuloPeriodoResumo} />
 
-            <div className="flex flex-col gap-2">
-              {grupo.despesas.map((despesa) => {
-                const categoria = obterCategoria(despesa.category)
-                return (
-                  <Link
-                    key={despesa.id}
-                    href={`/despesas/${despesa.id}`}
-                    className="flex flex-col gap-1.5 rounded-xl border border-white/10 bg-white/5 px-4 py-3 transition-colors hover:bg-white/10"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <span
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg"
-                          style={{ backgroundColor: `${categoria.cor}33` }}
-                        >
-                          {categoria.icone}
-                        </span>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium">{despesa.merchant_name ?? 'Sem nome'}</p>
-                            {/* Só aparece quando true — o caso "não precisa" fica
-                                sem nenhuma etiqueta, o visual mais neutro possível */}
-                            {despesa.precisa_reembolso && (
-                              <span className="shrink-0 rounded-full bg-[#6333ff]/15 px-2 py-0.5 text-[10px] font-semibold text-[#6333ff]">
-                                Reembolsável
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs" style={{ color: categoria.cor }}>
-                            {categoria.rotulo}
-                          </p>
-                        </div>
-                      </div>
+        {listaDespesas.length === 0 && (
+          <p className="text-sm text-white/50">
+            {temFiltroAtivo(filtros)
+              ? 'Nenhuma despesa encontrada com esses filtros.'
+              : 'Nenhuma despesa confirmada ainda.'}
+          </p>
+        )}
 
-                      <div className="text-right">
-                        <p className="font-semibold">{formatarMoeda(despesa.amount ?? 0)}</p>
-                        <p className="text-xs text-white/50">
-                          {despesa.expense_date ? formatarDataBR(despesa.expense_date) : '—'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Observação: só ocupa espaço quando preenchida, sem rótulo
-                        solto nem linha vazia quando a despesa não tem uma */}
-                    {despesa.observacoes && (
-                      <p className="truncate pl-12 text-xs text-white/40">
-                        {despesa.observacoes}
-                      </p>
-                    )}
-                  </Link>
-                )
-              })}
-            </div>
-          </section>
-        ))}
+        <ListaDespesas grupos={[...grupos.values()]} categorias={categorias} />
       </div>
     </div>
   )

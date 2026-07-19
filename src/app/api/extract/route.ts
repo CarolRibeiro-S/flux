@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { inferirMimeType } from '@/lib/imagemMime'
 import { obterClienteAtivoApi, ClienteAtivoInvalidoError } from '@/lib/clienteAtivo'
+import { ehTipoComprovanteValido, type TipoComprovante } from '@/lib/tiposComprovante'
 
 const anthropic = new Anthropic()
 
@@ -17,6 +18,7 @@ type DadosExtraidos = {
   amount: number | null
   expense_date: string | null
   category: string | null
+  tipo_comprovante: TipoComprovante
 }
 
 function validarDadosExtraidos(json: unknown): DadosExtraidos {
@@ -27,12 +29,21 @@ function validarDadosExtraidos(json: unknown): DadosExtraidos {
   const category =
     typeof dados.category === 'string' && dados.category.trim() ? dados.category.trim() : null
 
+  // Diferente dos demais campos, tipo_comprovante NÃO pode cair para null nem
+  // aceitar texto livre: a coluna tem CHECK com os três valores possíveis, e
+  // qualquer outra coisa faria o insert da despesa inteira falhar. Se a IA
+  // devolver algo fora da lista, classifica como "outro".
+  const tipo_comprovante = ehTipoComprovanteValido(dados.tipo_comprovante)
+    ? dados.tipo_comprovante
+    : 'outro'
+
   return {
     merchant_name: typeof dados.merchant_name === 'string' ? dados.merchant_name : null,
     cnpj_emitente: typeof dados.cnpj_emitente === 'string' ? dados.cnpj_emitente : null,
     amount,
     expense_date: typeof dados.expense_date === 'string' ? dados.expense_date : null,
     category,
+    tipo_comprovante,
   }
 }
 
@@ -104,17 +115,39 @@ export async function POST(request: NextRequest) {
             },
             {
               type: 'text',
-              text: `Analise esta imagem de nota fiscal ou recibo e extraia os seguintes dados:
+              text: `Analise esta imagem de comprovante de despesa e extraia os dados abaixo.
 
-- nome do estabelecimento (merchant_name)
-- CNPJ do emitente, apenas os números ou no formato original encontrado (cnpj_emitente)
-- valor total da despesa, como número decimal, sem símbolo de moeda (amount)
-- data da despesa, no formato YYYY-MM-DD (expense_date)
-- uma categoria curta e descritiva em português para o tipo de despesa/serviço, com no máximo 2-3 palavras, capturando o tipo real do estabelecimento (ex: "Farmácia", "Estacionamento", "Manutenção veicular", "Papelaria", "Restaurante") — não se prenda a uma lista fixa, identifique livremente (category)
+A imagem pode ser de DOIS tipos diferentes. Primeiro identifique qual é:
 
-Responda APENAS com um JSON válido, sem nenhum texto adicional, sem markdown e sem crases. Se algum campo não puder ser identificado com confiança, use null para esse campo. Formato exato da resposta:
+TIPO 1 — NOTA FISCAL / CUPOM FISCAL: documento fiscal, normalmente uma foto de papel impresso. Sinais: as expressões "NOTA FISCAL", "CUPOM FISCAL", "DANFE", "NFC-e", "NF-e", "SAT" ou "CF-e"; CNPJ e Inscrição Estadual do emitente; lista de itens com quantidade e valor unitário; linhas de tributos (ex: "Lei 12.741"); "chave de acesso" com 44 dígitos.
 
-{"merchant_name": string | null, "cnpj_emitente": string | null, "amount": number | null, "expense_date": string | null, "category": string | null}`,
+TIPO 2 — COMPROVANTE DE TRANSFERÊNCIA PIX: print de tela de aplicativo de banco. Sinais: "Comprovante", "Pix", "Transferência realizada", "Pix enviado", "Você transferiu"; dois blocos identificando as partes, rotulados como "Para"/"Destino"/"Favorecido"/"Quem recebeu" e "De"/"Origem"/"Pagador"/"Quem pagou"; "Chave Pix"; "Instituição" ou "Banco"; "ID da transação", "Código de autenticação" ou "E2E"; data acompanhada de horário. NÃO tem lista de itens nem tributos.
+
+Extraia SEMPRE os mesmos campos, seja qual for o tipo:
+
+- tipo_comprovante: "nota_fiscal" para o TIPO 1, "comprovante_pix" para o TIPO 2, ou "outro" se for outro tipo de recibo/documento que não se encaixe em nenhum dos dois.
+
+- merchant_name:
+  - Nota fiscal: nome do estabelecimento emitente.
+  - Comprovante PIX: nome de QUEM RECEBEU o dinheiro (favorecido/destinatário). ATENÇÃO: o comprovante mostra duas partes — quem pagou e quem recebeu. Extraia sempre QUEM RECEBEU, nunca quem pagou.
+
+- cnpj_emitente:
+  - Nota fiscal: CNPJ do emitente, apenas números ou no formato original encontrado.
+  - Comprovante PIX: CPF ou CNPJ de QUEM RECEBEU, se aparecer. Costuma vir mascarado (ex: "***.456.789-**") — nesse caso copie exatamente como está na imagem. Se o comprovante não mostrar documento do recebedor, use null.
+  - Nunca use o CPF/CNPJ de quem pagou.
+
+- amount: valor total como número decimal, sem símbolo de moeda e sem separador de milhar ("R$ 1.234,56" vira 1234.56).
+  - Nota fiscal: o valor TOTAL da nota, não o de um item isolado.
+  - Comprovante PIX: o valor transferido.
+
+- expense_date: data da transação no formato YYYY-MM-DD. Se houver data e hora juntas (ex: "05/03/2026 às 14:32"), use apenas a data.
+
+- category: categoria curta e descritiva em português, com no máximo 2-3 palavras, capturando o tipo real da despesa (ex: "Farmácia", "Estacionamento", "Manutenção veicular", "Papelaria", "Restaurante"). Não se prenda a uma lista fixa, identifique livremente.
+  - Comprovante PIX: deduza pelo nome de quem recebeu (ex: "Auto Posto Silva" sugere "Combustível"). Se for pessoa física e não houver nenhum indício da natureza da despesa, use "Transferência".
+
+Responda APENAS com um JSON válido, sem nenhum texto adicional, sem markdown e sem crases. Se algum campo não puder ser identificado com confiança, use null para esse campo — exceto tipo_comprovante, que deve sempre receber um dos três valores. Formato exato da resposta:
+
+{"merchant_name": string | null, "cnpj_emitente": string | null, "amount": number | null, "expense_date": string | null, "category": string | null, "tipo_comprovante": "nota_fiscal" | "comprovante_pix" | "outro"}`,
             },
           ],
         },
@@ -124,12 +157,16 @@ Responda APENAS com um JSON válido, sem nenhum texto adicional, sem markdown e 
     const blocoTexto = resposta.content.find((bloco) => bloco.type === 'text')
     const textoResposta = blocoTexto && blocoTexto.type === 'text' ? blocoTexto.text : ''
 
+    // Se a resposta não vier em JSON, a despesa é criada em branco (com o texto
+    // cru em raw_ocr_text) para a usuária preencher na revisão — sem tipo
+    // identificado, o comprovante entra como "outro".
     let dadosExtraidos: DadosExtraidos = {
       merchant_name: null,
       cnpj_emitente: null,
       amount: null,
       expense_date: null,
       category: null,
+      tipo_comprovante: 'outro',
     }
     let rawOcrText: string | null = null
 
@@ -140,11 +177,14 @@ Responda APENAS com um JSON válido, sem nenhum texto adicional, sem markdown e 
       rawOcrText = textoResposta
     }
 
-    // Detecção de possível nota fiscal duplicada: mesmo cliente, mesmo CNPJ,
-    // mesmo valor e mesma data batendo exatamente. Só verifica quando os três
-    // campos foram extraídos com confiança (nenhum null) — comparar nulls
-    // contra nulls daria falso positivo entre despesas totalmente diferentes.
-    // Não bloqueia a criação: só sinaliza na resposta pro front-end avisar.
+    // Detecção de possível comprovante duplicado: mesmo cliente, mesmo
+    // CNPJ/CPF, mesmo valor e mesma data batendo exatamente. Só verifica
+    // quando os três campos foram extraídos com confiança (nenhum null) —
+    // comparar nulls contra nulls daria falso positivo entre despesas
+    // totalmente diferentes. Na prática isso cobre nota fiscal sempre, e
+    // comprovante PIX apenas quando o documento do recebedor aparece no
+    // print (muitos bancos omitem). Não bloqueia a criação: só sinaliza na
+    // resposta pro front-end avisar.
     let duplicataId: string | null = null
     if (
       dadosExtraidos.cnpj_emitente &&

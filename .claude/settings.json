@@ -48,7 +48,13 @@
       "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" -X DELETE http://localhost:3000/api/reembolso/00000000-0000-0000-0000-000000000000)",
       "Bash(curl -s -X DELETE http://localhost:3000/api/reembolso/00000000-0000-0000-0000-000000000000)",
       "Bash(iconv -f UTF-16LE -t UTF-8 /c/Users/anaca/AppData/Local/Temp/flux-dev.log)",
-      "Bash(echo \"=== full log \\(decoded\\) ===\")"
+      "Bash(echo \"=== full log \\(decoded\\) ===\")",
+      "Skill(claude-api)",
+      "Skill(claude-api:*)",
+      "PowerShell(node \"C:\\\\Users\\\\anaca\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-anaca-dev-flux\\\\1b0d715f-8d33-492a-85a3-8b92a211532f\\\\scratchpad\\\\auditar-cliente-id.mjs\")",
+      "PowerShell(npm run build 2>&1)",
+      "PowerShell(node --version)",
+      "PowerShell(node \"C:\\\\Users\\\\anaca\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-anaca-dev-flux\\\\1b0d715f-8d33-492a-85a3-8b92a211532f\\\\scratchpad\\\\verificar-logica.ts\")"
     ]
   }
 }

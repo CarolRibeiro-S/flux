@@ -1,10 +1,14 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { obterClienteAtivo } from '@/lib/clienteAtivo'
 import { formatarMoeda, formatarDataBR } from '@/lib/formatadores'
 import { obterStatusReembolso } from '@/lib/statusReembolso'
 import { CabecalhoCliente } from '@/components/CabecalhoCliente'
+
+// A partir de quantos dias um lote ainda "aberto" passa a ser sinalizado
+const DIAS_PARA_ALERTA = 15
 
 type Lote = {
   id: string
@@ -13,6 +17,16 @@ type Lote = {
   total_amount: number | null
   status: string
   pdf_path: string | null
+  created_at: string | null
+}
+
+// Dias inteiros desde a criação do lote. created_at é timestamp completo
+// (com hora), então aqui `new Date` é seguro — diferente das colunas
+// YYYY-MM-DD, que precisam do tratamento de formatarDataBR.
+function diasDesde(criadoEm: string | null) {
+  if (!criadoEm) return 0
+  const millisegundos = Date.now() - new Date(criadoEm).getTime()
+  return Math.floor(millisegundos / (1000 * 60 * 60 * 24))
 }
 
 export default async function ReembolsoPage() {
@@ -32,7 +46,7 @@ export default async function ReembolsoPage() {
   // uma visão "todos os clientes juntos"
   const { data: lotes } = await supabase
     .from('reimbursement_batches')
-    .select('id, period_start, period_end, total_amount, status, pdf_path')
+    .select('id, period_start, period_end, total_amount, status, pdf_path, created_at')
     .eq('user_id', user.id)
     .eq('cliente_id', clienteAtivo.id)
     .order('period_end', { ascending: false })
@@ -76,10 +90,17 @@ export default async function ReembolsoPage() {
             const status = obterStatusReembolso(lote.status)
             const urlPdf = urlsPdf[indice]
 
+            // Só alerta lote ainda "aberto": um lote enviado ou pago já saiu
+            // das mãos dela, não faz sentido cobrar ação.
+            const diasAberto = diasDesde(lote.created_at)
+            const alertarAtraso = lote.status === 'aberto' && diasAberto >= DIAS_PARA_ALERTA
+
             return (
               <div
                 key={lote.id}
-                className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4"
+                className={`flex flex-col gap-3 rounded-2xl border bg-white/5 p-4 ${
+                  alertarAtraso ? 'border-[#ff9f43]/60' : 'border-white/10'
+                }`}
               >
                 <div className="flex items-start justify-between">
                   <div>
@@ -98,6 +119,15 @@ export default async function ReembolsoPage() {
                     {status.rotulo}
                   </span>
                 </div>
+
+                {alertarAtraso && (
+                  <div className="flex items-center gap-2 rounded-lg border border-[#ff9f43]/40 bg-[#ff9f43]/10 px-3 py-2 text-[#ff9f43]">
+                    <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
+                    <p className="text-xs font-semibold">
+                      Aberto há {diasAberto} dias — finalize ou marque como pago
+                    </p>
+                  </div>
+                )}
 
                 {urlPdf && (
                   <a
